@@ -91,7 +91,8 @@ export class CityMap extends Phaser.Scene {
 
         // Action trigger: Left click or main touch
         // Prevent painting if we are panning with multiple pointers
-        if (this.input.activePointer.isDown && this.input.activePointer.button === 0 && this.input.pointer2.isDown === false) {
+        const pointer2Down = this.input.pointer2 ? this.input.pointer2.isDown : false;
+        if (this.input.activePointer.isDown && this.input.activePointer.button === 0 && !pointer2Down) {
             actionTriggered = true;
         }
 
