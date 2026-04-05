@@ -24,7 +24,9 @@ export const TILE_TYPES = {
     // Row 9 (starts at 144)
     IND_MED: 144,
     IND_HIGH: 147,
-    POWER_PLANT: 150
+    POWER_PLANT: 150,
+    POLICE_STATION: 153,
+    FIRE_STATION: 156
 };
 
 export const TOOL_COSTS = {
@@ -34,7 +36,9 @@ export const TOOL_COSTS = {
     [TILE_TYPES.RES_EMPTY]: 100,
     [TILE_TYPES.COM_EMPTY]: 100,
     [TILE_TYPES.IND_EMPTY]: 100,
-    [TILE_TYPES.POWER_PLANT]: 3000
+    [TILE_TYPES.POWER_PLANT]: 3000,
+    [TILE_TYPES.POLICE_STATION]: 500,
+    [TILE_TYPES.FIRE_STATION]: 500
 };
 
 export class CityData {
@@ -51,6 +55,7 @@ export class CityData {
     public trafficGrid: number[][];
     public pollutionGrid: number[][];
     public landValueGrid: number[][];
+    public crimeGrid: number[][];
 
     // Economy and Stats
     public funds: number = 20000;
@@ -58,6 +63,11 @@ export class CityData {
     public dateMonth: number = 1;
     public dateYear: number = 1900;
     
+    // Budget
+    public taxRate: number = 0.07; // 7% tax rate default
+    public lastTaxesCollected: number = 0;
+    public lastUpkeepPaid: number = 0;
+
     // RCI Demand (-1.0 to 1.0)
     public demandR: number = 0.5;
     public demandC: number = 0.5;
@@ -72,6 +82,7 @@ export class CityData {
         this.trafficGrid = [];
         this.pollutionGrid = [];
         this.landValueGrid = [];
+        this.crimeGrid = [];
         for (let y = 0; y < height; y++) {
             this.typeGrid[y] = [];
             this.frameGrid[y] = [];
@@ -79,6 +90,7 @@ export class CityData {
             this.trafficGrid[y] = [];
             this.pollutionGrid[y] = [];
             this.landValueGrid[y] = [];
+            this.crimeGrid[y] = [];
             for (let x = 0; x < width; x++) {
                 this.typeGrid[y][x] = TILE_TYPES.GRASS;
                 this.frameGrid[y][x] = TILE_TYPES.GRASS;
@@ -86,6 +98,7 @@ export class CityData {
                 this.trafficGrid[y][x] = 0;
                 this.pollutionGrid[y][x] = 0;
                 this.landValueGrid[y][x] = 0;
+                this.crimeGrid[y][x] = 0;
             }
         }
     }

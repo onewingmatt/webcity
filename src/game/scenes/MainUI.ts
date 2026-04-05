@@ -36,14 +36,19 @@ export class MainUI extends Phaser.Scene {
         bg.lineStyle(4, 0xffffff, 1); // White border
         bg.strokeRect(0, 0, sidebarWidth, this.cameras.main.height);
 
+        // We now have more tools (Police, Fire).
+        // Note: For MVP we will just map them to keys 7 and 8 and use the Power Plant icon (frame 6) as a placeholder if we don't have new icons.
+        // Actually, we can use frame 3, 4, 5 for colored squares or just generic frames.
         const tools = [
-            { id: 0, frame: 0, key: '0', is3x3: false }, // Bulldozer
-            { id: 16, frame: 1, key: '1', is3x3: false }, // Road
-            { id: 32, frame: 2, key: '2', is3x3: false }, // Power Line
-            { id: 48, frame: 3, key: '3', is3x3: true }, // Res
-            { id: 54, frame: 4, key: '4', is3x3: true }, // Com
-            { id: 60, frame: 5, key: '5', is3x3: true }, // Ind
-            { id: 99, frame: 6, key: '6', is3x3: true }, // Power Plant
+            { id: 0, frame: 0, key: '0', is3x3: false, label: 'Bulldoze' },
+            { id: 16, frame: 1, key: '1', is3x3: false, label: 'Road' },
+            { id: 32, frame: 2, key: '2', is3x3: false, label: 'Power Line' },
+            { id: 48, frame: 3, key: '3', is3x3: true, label: 'Residential' },
+            { id: 60, frame: 4, key: '4', is3x3: true, label: 'Commercial' }, // Updated ID based on new tiles
+            { id: 105, frame: 5, key: '5', is3x3: true, label: 'Industrial' }, // Fixed ID (105 is IND_EMPTY)
+            { id: 150, frame: 6, key: '6', is3x3: true, label: 'Power Plant' }, // Updated ID
+            { id: 153, frame: 4, key: '7', is3x3: true, label: 'Police' }, // Using 'C' icon placeholder
+            { id: 156, frame: 5, key: '8', is3x3: true, label: 'Fire' },   // Using 'I' icon placeholder
         ];
 
         let startY = hudHeight + 10;
@@ -85,12 +90,28 @@ export class MainUI extends Phaser.Scene {
         // Set initial active state
         this.setActiveTool(16, toolIcons);
 
-        // Keyboard shortcuts
+        // Keyboard shortcuts for tools
         this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
             const key = parseInt(event.key);
-            if (key >= 0 && key <= 6) {
-                const map = [0, 16, 32, 48, 54, 60, 99];
-                this.setActiveTool(map[key], toolIcons);
+            if (key >= 0 && key <= 8) {
+                const toolMap = [0, 16, 32, 48, 60, 105, 150, 153, 156];
+                if (key < toolMap.length) {
+                    this.setActiveTool(toolMap[key], toolIcons);
+                }
+            }
+        });
+
+        // Keyboard shortcuts for taxes
+        this.input.keyboard?.on('keydown-MINUS', () => {
+            const cityScene = this.scene.get('CityMap') as any;
+            if (cityScene && cityScene.cityData) {
+                cityScene.cityData.taxRate = Math.max(0, cityScene.cityData.taxRate - 0.01);
+            }
+        });
+        this.input.keyboard?.on('keydown-EQUAL', () => { // Equal is typically the plus key
+            const cityScene = this.scene.get('CityMap') as any;
+            if (cityScene && cityScene.cityData) {
+                cityScene.cityData.taxRate = Math.min(0.20, cityScene.cityData.taxRate + 0.01);
             }
         });
 
@@ -185,19 +206,28 @@ export class MainUI extends Phaser.Scene {
     }
 
     handleSimulationEvents(stats: any) {
-        const { totalPollution, highTrafficTiles, roadTiles, population } = stats;
+        const { totalPollution, highTrafficTiles, roadTiles, population, totalCrime, budgetReport, net, taxes, upkeep } = stats;
+
+        if (budgetReport) {
+            this.queueMessage(`Year End Report: Collected $${taxes} in taxes. Paid $${upkeep} in road upkeep. Net change: $${net}. Use +/- to adjust tax rate.`);
+            return;
+        }
 
         // Thresholds for triggering messages
         if (population > 500 && Math.random() < 0.1) {
             this.queueMessage("Mayor, our city is growing! Keep up the good work zoning new areas.");
         }
 
-        if (totalPollution > 100) {
+        if (totalPollution > 100 && Math.random() < 0.2) {
             this.queueMessage("Warning! Pollution levels are rising. Citizens are complaining. Consider separating industry from residential zones.");
         }
 
-        if (roadTiles > 20 && highTrafficTiles / roadTiles > 0.3) {
+        if (roadTiles > 20 && highTrafficTiles / roadTiles > 0.3 && Math.random() < 0.2) {
              this.queueMessage("Traffic is terrible! We need a better road network. Try adding more connections or alternative routes.");
+        }
+
+        if (totalCrime > 50 && Math.random() < 0.3) {
+             this.queueMessage("Crime is out of control! Build more Police Stations (Press 7) to keep your citizens safe and maintain land value.");
         }
     }
 
@@ -266,7 +296,8 @@ export class MainUI extends Phaser.Scene {
             
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const m = data.dateMonth - 1;
-            this.dateText.setText(`${months[m]} ${data.dateYear}`);
+            const taxPct = Math.round(data.taxRate * 100);
+            this.dateText.setText(`${months[m]} ${data.dateYear}  Tax: ${taxPct}%`);
             
             // Update RCI Meter (-1 to 1 mapped to -45 to 45 pixels)
             const meterY = this.cameras.main.height - 120;
@@ -294,13 +325,12 @@ export class MainUI extends Phaser.Scene {
     setActiveTool(toolId: number, icons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[]) {
         this.activeTool = toolId;
         
-        // Let CityMap know if it's a 3x3 tool
-        const toolData = [0, 16, 32, 48, 54, 60, 99].find(id => id === toolId);
-        const is3x3 = toolData !== undefined && toolData >= 48;
+        // Let CityMap know if it's a 3x3 tool (everything from RES_EMPTY 48 and up)
+        const toolMap = [0, 16, 32, 48, 60, 105, 150, 153, 156];
+        const is3x3 = toolId >= 48;
         this.scene.get('CityMap').events.emit('toolChanged', is3x3);
 
-        const tools = [0, 16, 32, 48, 54, 60, 99];
-        const activeIdx = tools.indexOf(toolId);
+        const activeIdx = toolMap.indexOf(toolId);
         
         icons.forEach((item, i) => {
             if (i === activeIdx) {

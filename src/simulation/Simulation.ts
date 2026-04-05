@@ -14,12 +14,16 @@ export class Simulation {
         if (this.cityData.dateMonth > 12) {
             this.cityData.dateMonth = 1;
             this.cityData.dateYear++;
+            this.processYearEndBudget();
         }
 
         this.calculatePowerGrid();
 
-        // Decay traffic and pollution slightly every tick
+        // Decay traffic, pollution, and crime slightly every tick
         this.decayGrids();
+
+        // Calculate service coverage (Police/Fire auras)
+        this.calculateCityServices();
 
         let popCount = 0;
         let builtR = 0;
@@ -31,15 +35,25 @@ export class Simulation {
             for(let x=0; x<this.cityData.width; x++) {
                 const type = this.cityData.getTile(x, y);
                 
-                // Calculate local land value (simplified)
-                // High pollution drastically reduces land value.
-                const pollution = this.cityData.pollutionGrid[y][x];
-                let landValue = 50 - pollution;
-                this.cityData.landValueGrid[y][x] = landValue;
-
+                // Generate crime in dense populated areas
                 const isIndustry = type >= TILE_TYPES.IND_EMPTY && type <= TILE_TYPES.IND_HIGH;
                 const isResidential = type >= TILE_TYPES.RES_EMPTY && type <= TILE_TYPES.RES_HIGH;
                 const isCommercial = type >= TILE_TYPES.COM_EMPTY && type <= TILE_TYPES.COM_HIGH;
+
+                if (isResidential || isCommercial) {
+                    if (type === TILE_TYPES.RES_MED || type === TILE_TYPES.COM_MED) {
+                        this.cityData.crimeGrid[y][x] += 2;
+                    } else if (type === TILE_TYPES.RES_HIGH || type === TILE_TYPES.COM_HIGH) {
+                        this.cityData.crimeGrid[y][x] += 5;
+                    }
+                }
+
+                // Calculate local land value (simplified)
+                // High pollution and crime drastically reduces land value.
+                const pollution = this.cityData.pollutionGrid[y][x];
+                const crime = this.cityData.crimeGrid[y][x];
+                let landValue = 50 - pollution - crime;
+                this.cityData.landValueGrid[y][x] = landValue;
 
                 // Traffic and Pollution generation
                 if ((isIndustry && type !== TILE_TYPES.IND_EMPTY) || type === TILE_TYPES.POWER_PLANT) {
@@ -163,6 +177,41 @@ export class Simulation {
         this.evaluateAdvisorEvents();
     }
 
+    private processYearEndBudget() {
+        // Calculate taxes (population * basic revenue rate * taxRate)
+        const revenuePerCitizen = 10;
+        const taxes = Math.floor(this.cityData.population * revenuePerCitizen * this.cityData.taxRate);
+
+        // Calculate upkeep (roads cost money)
+        let roadCount = 0;
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                if (this.cityData.getTile(x, y) === TILE_TYPES.ROAD_BASE) {
+                    roadCount++;
+                }
+            }
+        }
+        const upkeep = roadCount * 2; // $2 per road tile per year
+
+        this.cityData.lastTaxesCollected = taxes;
+        this.cityData.lastUpkeepPaid = upkeep;
+
+        this.cityData.funds += (taxes - upkeep);
+
+        // Ensure funds don't go negative, or handle bankruptcy
+        if (this.cityData.funds < 0) this.cityData.funds = 0;
+
+        // Dispatch budget event
+        const e = new CustomEvent('advisorEvent', { detail: {
+            budgetReport: true,
+            taxes,
+            upkeep,
+            net: taxes - upkeep,
+            funds: this.cityData.funds
+        }});
+        window.dispatchEvent(e);
+    }
+
     private decayGrids() {
         for(let y=0; y<this.cityData.height; y++) {
             for(let x=0; x<this.cityData.width; x++) {
@@ -171,6 +220,44 @@ export class Simulation {
                 }
                 if (this.cityData.pollutionGrid[y][x] > 0) {
                     this.cityData.pollutionGrid[y][x] = Math.max(0, this.cityData.pollutionGrid[y][x] - 1);
+                }
+                if (this.cityData.crimeGrid[y][x] > 0) {
+                     this.cityData.crimeGrid[y][x] = Math.max(0, this.cityData.crimeGrid[y][x] - 1);
+                }
+            }
+        }
+    }
+
+    private calculateCityServices() {
+        const policeRadius = 15;
+        // Fire stations don't reduce crime, but they would prevent fires (omitted for MVP unless we add disasters)
+
+        // Find police stations
+        const stations: {x: number, y: number}[] = [];
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                if (this.cityData.getTile(x, y) === TILE_TYPES.POLICE_STATION) {
+                    if (this.cityData.powerGrid[y][x]) { // Must be powered to work!
+                         stations.push({x, y});
+                    }
+                }
+            }
+        }
+
+        // Apply police aura (reduces crime heavily)
+        for (const st of stations) {
+            for (let dy = -policeRadius; dy <= policeRadius; dy++) {
+                for (let dx = -policeRadius; dx <= policeRadius; dx++) {
+                    const nx = st.x + dx;
+                    const ny = st.y + dy;
+                    if (this.cityData.isValid(nx, ny)) {
+                        // The closer to the station, the stronger the crime reduction
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist <= policeRadius) {
+                            const strength = Math.floor((policeRadius - dist) / 2);
+                            this.cityData.crimeGrid[ny][nx] = Math.max(0, this.cityData.crimeGrid[ny][nx] - strength);
+                        }
+                    }
                 }
             }
         }
@@ -290,11 +377,20 @@ export class Simulation {
             }
         }
 
+        // Tally total crime
+        let totalCrime = 0;
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                totalCrime += this.cityData.crimeGrid[y][x];
+            }
+        }
+
         const e = new CustomEvent('advisorEvent', { detail: {
             totalPollution,
             highTrafficTiles,
             roadTiles,
-            population: this.cityData.population
+            population: this.cityData.population,
+            totalCrime
         }});
         window.dispatchEvent(e);
     }
@@ -303,10 +399,14 @@ export class Simulation {
         // Classic SimCity heuristic: Ratio of R:C:I should be roughly 3:1:1
         // If R is high but jobs (C/I) are low, demand for C/I goes up, R goes down.
         const total = r + c + i;
+
+        // Tax rate modifier (7% is neutral. Higher tax = lower demand)
+        const taxModifier = (0.07 - this.cityData.taxRate) * 10;
+
         if (total === 0) {
-            this.cityData.demandR = 0.8;
-            this.cityData.demandC = 0.5;
-            this.cityData.demandI = 0.5;
+            this.cityData.demandR = this.clamp(0.8 + taxModifier, -1, 1);
+            this.cityData.demandC = this.clamp(0.5 + taxModifier, -1, 1);
+            this.cityData.demandI = this.clamp(0.5 + taxModifier, -1, 1);
             return;
         }
 
@@ -318,9 +418,9 @@ export class Simulation {
         const targetC = 0.20; // 20% Commercial
         const targetI = 0.30; // 30% Industry
 
-        this.cityData.demandR = this.clamp((targetR - currentRatioR) * 2, -1, 1);
-        this.cityData.demandC = this.clamp((targetC - currentRatioC) * 2, -1, 1);
-        this.cityData.demandI = this.clamp((targetI - currentRatioI) * 2, -1, 1);
+        this.cityData.demandR = this.clamp(((targetR - currentRatioR) * 2) + taxModifier, -1, 1);
+        this.cityData.demandC = this.clamp(((targetC - currentRatioC) * 2) + taxModifier, -1, 1);
+        this.cityData.demandI = this.clamp(((targetI - currentRatioI) * 2) + taxModifier, -1, 1);
         
         // Small baseline demand so city doesn't totally stall
         if (this.cityData.demandR < 0.1 && Math.random() < 0.3) this.cityData.demandR += 0.2;

@@ -245,6 +245,8 @@ export class CityMap extends Phaser.Scene {
             case TILE_TYPES.COM_EMPTY: return 100;
             case TILE_TYPES.IND_EMPTY: return 100;
             case TILE_TYPES.POWER_PLANT: return 3000;
+            case TILE_TYPES.POLICE_STATION: return 500;
+            case TILE_TYPES.FIRE_STATION: return 500;
             default: return 0;
         }
     }
