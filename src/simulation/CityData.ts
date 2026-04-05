@@ -1,8 +1,16 @@
 export const TILE_TYPES = {
     GRASS: 0,
     DIRT: 1,
+    WATER: 2,
+    TREE: 3,
+    PARK: 4,
+
     ROAD_BASE: 16,
     POWER_LINE_BASE: 32,
+    // Note: 48 starts 3x3 zones. Let's put RAIL_BASE at the end of the tileset to avoid collisions,
+    // since it needs a full 16 frames for auto-tiling.
+    // Row 15 (starts at 240)
+    RAIL_BASE: 240,
 
     // 3x3 Zones - each block is 3 wide, taking up 3 horizontal tiles.
     // Tileset is 16 columns wide. Maximum 5 blocks per row (indices 0, 3, 6, 9, 12).
@@ -26,19 +34,25 @@ export const TILE_TYPES = {
     IND_HIGH: 147,
     POWER_PLANT: 150,
     POLICE_STATION: 153,
-    FIRE_STATION: 156
+    FIRE_STATION: 156,
+
+    // Row 12 (starts at 192)
+    TRAIN_DEPOT: 192
 };
 
 export const TOOL_COSTS = {
     [TILE_TYPES.GRASS]: 1, // Bulldoze cost
+    [TILE_TYPES.PARK]: 10,
     [TILE_TYPES.ROAD_BASE]: 10,
+    [TILE_TYPES.RAIL_BASE]: 20,
     [TILE_TYPES.POWER_LINE_BASE]: 5,
     [TILE_TYPES.RES_EMPTY]: 100,
     [TILE_TYPES.COM_EMPTY]: 100,
     [TILE_TYPES.IND_EMPTY]: 100,
     [TILE_TYPES.POWER_PLANT]: 3000,
     [TILE_TYPES.POLICE_STATION]: 500,
-    [TILE_TYPES.FIRE_STATION]: 500
+    [TILE_TYPES.FIRE_STATION]: 500,
+    [TILE_TYPES.TRAIN_DEPOT]: 500
 };
 
 export class CityData {
@@ -101,6 +115,50 @@ export class CityData {
                 this.crimeGrid[y][x] = 0;
             }
         }
+
+        this.generateTerrain();
+    }
+
+    private generateTerrain() {
+        // 1. Generate a wandering river
+        let riverX = Math.floor(this.width / 2);
+        for (let y = 0; y < this.height; y++) {
+            // River is roughly 3 tiles wide
+            for (let w = -1; w <= 1; w++) {
+                const rx = riverX + w;
+                if (this.isValid(rx, y)) {
+                    this.typeGrid[y][rx] = TILE_TYPES.WATER;
+                    this.frameGrid[y][rx] = TILE_TYPES.WATER;
+                }
+            }
+
+            // Randomly drift left or right
+            if (Math.random() < 0.3) riverX--;
+            else if (Math.random() < 0.3) riverX++;
+
+            riverX = Math.max(2, Math.min(this.width - 3, riverX));
+        }
+
+        // 2. Scatter trees using simple noise/random clumps
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (this.typeGrid[y][x] === TILE_TYPES.GRASS) {
+                    if (Math.random() < 0.05) {
+                        this.typeGrid[y][x] = TILE_TYPES.TREE;
+                        this.frameGrid[y][x] = TILE_TYPES.TREE;
+
+                        // Cluster trees
+                        const neighbors = [{dx:-1,dy:0}, {dx:1,dy:0}, {dx:0,dy:-1}, {dx:0,dy:1}];
+                        for (const n of neighbors) {
+                            if (Math.random() < 0.5 && this.isValid(x+n.dx, y+n.dy) && this.typeGrid[y+n.dy][x+n.dx] === TILE_TYPES.GRASS) {
+                                this.typeGrid[y+n.dy][x+n.dx] = TILE_TYPES.TREE;
+                                this.frameGrid[y+n.dy][x+n.dx] = TILE_TYPES.TREE;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     setTile(x: number, y: number, type: number, triggerUpdate: boolean = true) {
@@ -146,7 +204,7 @@ export class CityData {
         
         const type = this.typeGrid[y][x];
         
-        if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.POWER_LINE_BASE) {
+        if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.POWER_LINE_BASE || type === TILE_TYPES.RAIL_BASE) {
             let mask = 0;
             // North
             if (this.isConnectable(x, y - 1, type)) mask |= 1;
@@ -157,8 +215,10 @@ export class CityData {
             // West
             if (this.isConnectable(x - 1, y, type)) mask |= 8;
             
+            // For Rails crossing Roads, or Rails crossing Power lines, we'd need specific intersection frames.
+            // For simplicity, we just use the mask on the base type.
             this.frameGrid[y][x] = type + mask;
-        } else if (type >= TILE_TYPES.RES_EMPTY) {
+        } else if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE) {
              // For 3x3 zones, the frame is set explicitly during placement, do nothing here.
         } else {
              this.frameGrid[y][x] = type;
@@ -173,7 +233,12 @@ export class CityData {
         
         // Power lines can connect to zones and power plants
         if (targetType === TILE_TYPES.POWER_LINE_BASE) {
-            if (type >= TILE_TYPES.RES_EMPTY) return true; // Connects to any zone/building
+            if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE) return true; // Connects to any 3x3 zone/building
+        }
+
+        // Rails connect to Depots
+        if (targetType === TILE_TYPES.RAIL_BASE) {
+            if (type === TILE_TYPES.TRAIN_DEPOT) return true;
         }
         
         return false;
