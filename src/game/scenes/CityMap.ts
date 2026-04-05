@@ -5,6 +5,7 @@ import { Simulation } from '../../simulation/Simulation';
 import { InputManager } from '../../core/InputManager';
 
 import { TILE_TYPES } from '../../simulation/CityData';
+import { audioManager } from '../AudioManager';
 
 export class CityMap extends Phaser.Scene {
     private mapWidth = 50;
@@ -152,6 +153,12 @@ export class CityMap extends Phaser.Scene {
 
         const currentTool = uiScene.activeTool;
         
+        // Prevent placing gifts if not unlocked or already placed
+        if (currentTool >= TILE_TYPES.MAYOR_HOUSE) {
+            if (!this.cityData.unlockedGifts.has(currentTool)) return;
+            if (this.cityData.placedGifts.has(currentTool)) return; // Only allow 1 of each gift
+        }
+
         // Check funds (Importing TOOL_COSTS inline here for safety, it's exported from CityData)
         const cost = this.getToolCost(currentTool);
         if (this.cityData.funds < cost) {
@@ -164,7 +171,7 @@ export class CityMap extends Phaser.Scene {
         if (currentTool === TILE_TYPES.GRASS) {
             // Bulldozer
             const targetType = this.cityData.getTile(x, y);
-            const isTarget3x3 = targetType >= TILE_TYPES.RES_EMPTY && targetType < TILE_TYPES.RAIL_BASE;
+            const isTarget3x3 = targetType >= TILE_TYPES.RES_EMPTY && targetType < TILE_TYPES.BRIDGE_ROAD;
 
             if (isTarget3x3) {
                 // Find top-left of the 3x3
@@ -231,6 +238,7 @@ export class CityMap extends Phaser.Scene {
                     if (this.cityData.funds >= this.getToolCost(TILE_TYPES.BRIDGE_ROAD)) {
                         this.cityData.setTile(x, y, TILE_TYPES.BRIDGE_ROAD, true);
                         this.cityData.funds -= this.getToolCost(TILE_TYPES.BRIDGE_ROAD);
+                        audioManager.playBuild();
                         // We handled cost manually since bridging dynamically swaps the tool
                         return;
                     }
@@ -238,6 +246,7 @@ export class CityMap extends Phaser.Scene {
                     if (this.cityData.funds >= this.getToolCost(TILE_TYPES.BRIDGE_RAIL)) {
                         this.cityData.setTile(x, y, TILE_TYPES.BRIDGE_RAIL, true);
                         this.cityData.funds -= this.getToolCost(TILE_TYPES.BRIDGE_RAIL);
+                        audioManager.playBuild();
                         return;
                     }
                 }
@@ -252,7 +261,15 @@ export class CityMap extends Phaser.Scene {
         }
 
         if (placed) {
+            if (currentTool >= TILE_TYPES.MAYOR_HOUSE) {
+                this.cityData.placedGifts.add(currentTool);
+            }
             this.cityData.funds -= cost;
+            if (currentTool === TILE_TYPES.GRASS) {
+                audioManager.playBulldoze();
+            } else {
+                audioManager.playBuild();
+            }
         }
     }
 

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { audioManager } from '../AudioManager';
 
 export class MainUI extends Phaser.Scene {
     public activeTool: number = 16; // Default to Road (16)
@@ -52,6 +53,9 @@ export class MainUI extends Phaser.Scene {
             { id: 198, frame: 4, key: 'W', is3x3: true, label: 'Airport' },     // Using 'C' icon
             { id: 150, frame: 6, key: 'E', is3x3: true, label: 'Power Plant' },
             { id: 192, frame: 6, key: 'R', is3x3: true, label: 'Train Depot' },
+            { id: 201, frame: 4, key: 'A', is3x3: true, label: 'Mayor House' }, // Placeholder icons
+            { id: 204, frame: 5, key: 'S', is3x3: true, label: 'Casino' },
+            { id: 207, frame: 6, key: 'D', is3x3: true, label: 'Park' },
         ];
 
         let startY = hudHeight + 5;
@@ -67,12 +71,20 @@ export class MainUI extends Phaser.Scene {
             this.modeText.setText(`View: ${mode} (V)`);
         });
 
+        // Add Eval Button
+        this.add.text(this.cameras.main.width - 100, 8, 'EVAL (Z)', { fontSize: '16px', color: '#ff0', fontFamily: 'monospace', backgroundColor: '#000' })
+            .setInteractive()
+            .on('pointerdown', () => {
+                audioManager.playClick();
+                this.events.emit('openEvaluation');
+            });
+
         // Setup RCI Meter
         this.setupRCIMeter();
         
         const toolIcons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[] = [];
 
-        // We have 14 tools now, draw in two columns
+        // We have 17 tools now, draw in two columns
         tools.forEach((tool, index) => {
             const col = index % 2;
             const row = Math.floor(index / 2);
@@ -89,12 +101,38 @@ export class MainUI extends Phaser.Scene {
             const icon = this.add.image(iconX + 15, iconY + 15, 'ui_icons', tool.frame)
                 .setInteractive()
                 .setScale(0.8) // Scale down slightly to fit
-                .on('pointerdown', () => this.setActiveTool(tool.id, toolIcons));
+                .on('pointerdown', () => {
+                    audioManager.playClick();
+                    this.setActiveTool(tool.id, toolIcons);
+                });
+
+            // For Gifts, we initially hide them or grey them out, but for this step we will just grey them out
+            // Let's hide them if not unlocked
+            if (tool.id >= 201) {
+                icon.setAlpha(0.2);
+            }
             
             // Tooltip text helper (draw over icon)
             this.add.text(iconX + 2, iconY + 2, tool.key, { fontSize: '10px', color: '#fff', backgroundColor: '#000' });
             
             toolIcons.push({ icon, border });
+        });
+
+        // Listen to check unlocked gifts
+        this.events.on('updateGifts', () => {
+            const cityScene = this.scene.get('CityMap') as any;
+            if (cityScene && cityScene.cityData) {
+                const unlocked = cityScene.cityData.unlockedGifts;
+                tools.forEach((t, i) => {
+                    if (t.id >= 201) {
+                        if (unlocked.has(t.id)) {
+                             toolIcons[i].icon.setAlpha(1.0);
+                        } else {
+                             toolIcons[i].icon.setAlpha(0.2);
+                        }
+                    }
+                });
+            }
         });
 
         // Set initial active state
@@ -108,6 +146,12 @@ export class MainUI extends Phaser.Scene {
             if (toolMap[keyChar] !== undefined) {
                 this.setActiveTool(toolMap[keyChar], toolIcons);
             }
+        });
+
+        // Keyboard shortcut for Evaluation
+        this.input.keyboard?.on('keydown-Z', () => {
+            audioManager.playClick();
+            this.events.emit('openEvaluation');
         });
 
         // Keyboard shortcuts for taxes
@@ -209,7 +253,10 @@ export class MainUI extends Phaser.Scene {
 
         // Click to dismiss/next
         bg.setInteractive(new Phaser.Geom.Rectangle(0, 0, boxWidth, boxHeight), Phaser.Geom.Rectangle.Contains);
-        bg.on('pointerdown', () => this.advanceMessage());
+        bg.on('pointerdown', () => {
+            audioManager.playClick();
+            this.advanceMessage();
+        });
 
         this.advisorContainer.add([bg, portraitBg, portrait, this.advisorText, clickPrompt]);
     }
@@ -269,6 +316,7 @@ export class MainUI extends Phaser.Scene {
             const msg = this.messageQueue[0];
             this.advisorText.setText(msg);
             this.advisorContainer.setVisible(true);
+            audioManager.playAlert();
         } else {
             this.isMessageActive = false;
             this.advisorContainer.setVisible(false);
@@ -313,6 +361,7 @@ export class MainUI extends Phaser.Scene {
         const cityScene = this.scene.get('CityMap') as any;
         if (cityScene && cityScene.cityData) {
             const data = cityScene.cityData;
+            this.events.emit('updateGifts');
             this.fundsText.setText(`Funds: $${data.funds}`);
             this.popText.setText(`Pop: ${data.population}`);
             
@@ -348,7 +397,7 @@ export class MainUI extends Phaser.Scene {
         this.activeTool = toolId;
         
         // Let CityMap know if it's a 3x3 tool
-        const toolMap = [0, 16, 240, 32, 4, 48, 60, 105, 153, 156, 195, 198, 150, 192];
+        const toolMap = [0, 16, 240, 32, 4, 48, 60, 105, 153, 156, 195, 198, 150, 192, 201, 204, 207];
         const is3x3 = toolId >= 48 && toolId !== 240 && toolId !== 224 && toolId !== 256;
         this.scene.get('CityMap').events.emit('toolChanged', is3x3);
 

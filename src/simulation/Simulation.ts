@@ -1,4 +1,5 @@
 import { CityData, TILE_TYPES } from './CityData';
+import { audioManager } from '../game/AudioManager';
 
 export class Simulation {
     private cityData: CityData;
@@ -16,6 +17,10 @@ export class Simulation {
             this.cityData.dateYear++;
             this.processYearEndBudget();
         }
+
+        audioManager.updatePopulationTier(this.cityData.population);
+
+        this.checkGiftUnlocks();
 
         this.calculatePowerGrid();
 
@@ -35,6 +40,17 @@ export class Simulation {
         let builtR = 0;
         let builtC = 0;
         let builtI = 0;
+
+        // Track Ports globally once per tick
+        let hasAirport = false;
+        let hasSeaport = false;
+        for(let py=0; py<this.cityData.height; py++) {
+            for(let px=0; px<this.cityData.width; px++) {
+                const pType = this.cityData.getTile(px, py);
+                if (pType === TILE_TYPES.AIRPORT && this.cityData.powerGrid[py][px]) hasAirport = true;
+                if (pType === TILE_TYPES.SEAPORT && this.cityData.powerGrid[py][px]) hasSeaport = true;
+            }
+        }
 
         // Growth and evaluation logic
         for(let y=0; y<this.cityData.height; y++) {
@@ -120,16 +136,6 @@ export class Simulation {
                         let nextType = type;
 
                         // Evaluate Growth
-                        let hasAirportLocal = false;
-                        let hasSeaportLocal = false;
-                        for(let py=0; py<this.cityData.height; py++) {
-                            for(let px=0; px<this.cityData.width; px++) {
-                                const pType = this.cityData.getTile(px, py);
-                                if (pType === TILE_TYPES.AIRPORT && this.cityData.powerGrid[py][px]) hasAirportLocal = true;
-                                if (pType === TILE_TYPES.SEAPORT && this.cityData.powerGrid[py][px]) hasSeaportLocal = true;
-                            }
-                        }
-
                         if (hasPower && hasRoad && canGrowEnv && hasDemand) {
                             if (Math.random() < 0.1) { // 10% chance per month to grow if conditions met
                                 if (type === TILE_TYPES.RES_EMPTY) nextType = TILE_TYPES.RES_LOW;
@@ -138,11 +144,11 @@ export class Simulation {
 
                                 else if (type === TILE_TYPES.COM_EMPTY) nextType = TILE_TYPES.COM_LOW;
                                 else if (type === TILE_TYPES.COM_LOW && landValue > 20) nextType = TILE_TYPES.COM_MED;
-                                else if (type === TILE_TYPES.COM_MED && landValue > 35 && hasAirportLocal) nextType = TILE_TYPES.COM_HIGH;
+                                else if (type === TILE_TYPES.COM_MED && landValue > 35 && hasAirport) nextType = TILE_TYPES.COM_HIGH;
 
                                 else if (type === TILE_TYPES.IND_EMPTY) nextType = TILE_TYPES.IND_LOW;
                                 else if (type === TILE_TYPES.IND_LOW) nextType = TILE_TYPES.IND_MED;
-                                else if (type === TILE_TYPES.IND_MED && hasSeaportLocal) nextType = TILE_TYPES.IND_HIGH;
+                                else if (type === TILE_TYPES.IND_MED && hasSeaport) nextType = TILE_TYPES.IND_HIGH;
                             }
                         }
 
@@ -210,27 +216,45 @@ export class Simulation {
         builtC = Math.floor(builtC / 9);
         builtI = Math.floor(builtI / 9);
         
-        // Track Ports
-        let hasAirport = false;
-        let hasSeaport = false;
-        for(let y=0; y<this.cityData.height; y++) {
-            for(let x=0; x<this.cityData.width; x++) {
-                const type = this.cityData.getTile(x, y);
-                if (type === TILE_TYPES.AIRPORT && this.cityData.powerGrid[y][x]) hasAirport = true;
-                if (type === TILE_TYPES.SEAPORT && this.cityData.powerGrid[y][x]) hasSeaport = true;
-            }
-        }
-
         this.updateRCI(builtR, builtC, builtI, hasAirport, hasSeaport);
 
         // Trigger Advisor events
         this.evaluateAdvisorEvents();
     }
 
+    private checkGiftUnlocks() {
+        // Mayor's House (Pop 2,000)
+        if (this.cityData.population >= 2000 && !this.cityData.unlockedGifts.has(TILE_TYPES.MAYOR_HOUSE)) {
+            this.cityData.unlockedGifts.add(TILE_TYPES.MAYOR_HOUSE);
+            window.dispatchEvent(new CustomEvent('advisorEvent', { detail: { message: "Congratulations! You've reached a population of 2,000! The citizens have built you a Mayor's House." }}));
+        }
+
+        // Casino (Funds < $5,000)
+        if (this.cityData.funds < 5000 && !this.cityData.unlockedGifts.has(TILE_TYPES.CASINO)) {
+            this.cityData.unlockedGifts.add(TILE_TYPES.CASINO);
+            window.dispatchEvent(new CustomEvent('advisorEvent', { detail: { message: "Funds are running low. A private investor has offered to build a Casino to generate revenue, but beware the crime!" }}));
+        }
+
+        // Amusement Park (Pop 10,000)
+        if (this.cityData.population >= 10000 && !this.cityData.unlockedGifts.has(TILE_TYPES.AMUSEMENT_PARK)) {
+            this.cityData.unlockedGifts.add(TILE_TYPES.AMUSEMENT_PARK);
+            window.dispatchEvent(new CustomEvent('advisorEvent', { detail: { message: "Our city is booming! You can now build an Amusement Park to entertain the citizens." }}));
+        }
+    }
+
     private processYearEndBudget() {
         // Calculate taxes (population * basic revenue rate * taxRate)
         const revenuePerCitizen = 10;
-        const taxes = Math.floor(this.cityData.population * revenuePerCitizen * this.cityData.taxRate);
+        let taxes = Math.floor(this.cityData.population * revenuePerCitizen * this.cityData.taxRate);
+
+        // Add Casino revenue
+        let casinoCount = 0;
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                if (this.cityData.getTile(x, y) === TILE_TYPES.CASINO) casinoCount++;
+            }
+        }
+        taxes += (casinoCount * 300); // 300 extra revenue per year per casino
 
         // Calculate upkeep (roads cost money)
         let roadCount = 0;
@@ -251,15 +275,55 @@ export class Simulation {
         // Ensure funds don't go negative, or handle bankruptcy
         if (this.cityData.funds < 0) this.cityData.funds = 0;
 
+        // Record history for graphs
+        const historyMetrics = this.getMetrics();
+        this.cityData.history.push({
+            year: this.cityData.dateYear,
+            pop: this.cityData.population,
+            funds: this.cityData.funds,
+            crime: historyMetrics.totalCrime,
+            pollution: historyMetrics.totalPollution
+        });
+
+        // Keep history bounded to 120 years
+        if (this.cityData.history.length > 120) {
+             this.cityData.history.shift();
+        }
+
         // Dispatch budget event
+        const metrics = this.getMetrics();
         const e = new CustomEvent('advisorEvent', { detail: {
             budgetReport: true,
             taxes,
             upkeep,
             net: taxes - upkeep,
-            funds: this.cityData.funds
+            funds: this.cityData.funds,
+            population: this.cityData.population,
+            totalPollution: metrics.totalPollution,
+            totalCrime: metrics.totalCrime
         }});
         window.dispatchEvent(e);
+    }
+
+    private getMetrics() {
+        let totalPollution = 0;
+        let highTrafficTiles = 0;
+        let roadTiles = 0;
+        let totalCrime = 0;
+
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                totalPollution += this.cityData.pollutionGrid[y][x];
+                totalCrime += this.cityData.crimeGrid[y][x];
+                if (this.cityData.getTile(x, y) === TILE_TYPES.ROAD_BASE) {
+                    roadTiles++;
+                    if (this.cityData.trafficGrid[y][x] > 30) {
+                        highTrafficTiles++;
+                    }
+                }
+            }
+        }
+        return { totalPollution, highTrafficTiles, roadTiles, totalCrime };
     }
 
     private decayGrids() {
@@ -295,10 +359,16 @@ export class Simulation {
         for(let y=0; y<this.cityData.height; y++) {
             for(let x=0; x<this.cityData.width; x++) {
                 const type = this.cityData.getTile(x, y);
-                if (type === TILE_TYPES.WATER || type === TILE_TYPES.PARK || type === TILE_TYPES.TREE) {
-                    const boost = type === TILE_TYPES.WATER ? 5 : 3;
-                    for (let dy = -radius; dy <= radius; dy++) {
-                        for (let dx = -radius; dx <= radius; dx++) {
+                if (type === TILE_TYPES.WATER || type === TILE_TYPES.PARK || type === TILE_TYPES.TREE || type === TILE_TYPES.MAYOR_HOUSE || type === TILE_TYPES.AMUSEMENT_PARK) {
+                    let boost = 0;
+                    let effectRadius = radius;
+                    if (type === TILE_TYPES.WATER) boost = 5;
+                    else if (type === TILE_TYPES.PARK || type === TILE_TYPES.TREE) boost = 3;
+                    else if (type === TILE_TYPES.MAYOR_HOUSE) { boost = 10; effectRadius = 5; }
+                    else if (type === TILE_TYPES.AMUSEMENT_PARK) { boost = 8; effectRadius = 8; }
+
+                    for (let dy = -effectRadius; dy <= effectRadius; dy++) {
+                        for (let dx = -effectRadius; dx <= effectRadius; dx++) {
                             const nx = x + dx;
                             const ny = y + dy;
                             if (this.cityData.isValid(nx, ny)) {
@@ -383,14 +453,18 @@ export class Simulation {
     private calculateCityServices() {
         const policeRadius = 15;
 
-        // Find police stations
+        // Find police stations and casinos
         const stations: {x: number, y: number}[] = [];
+        const casinos: {x: number, y: number}[] = [];
         for(let y=0; y<this.cityData.height; y++) {
             for(let x=0; x<this.cityData.width; x++) {
-                if (this.cityData.getTile(x, y) === TILE_TYPES.POLICE_STATION) {
+                const tile = this.cityData.getTile(x, y);
+                if (tile === TILE_TYPES.POLICE_STATION) {
                     if (this.cityData.powerGrid[y][x]) { // Must be powered to work!
                          stations.push({x, y});
                     }
+                } else if (tile === TILE_TYPES.CASINO) {
+                     casinos.push({x, y});
                 }
             }
         }
@@ -518,37 +592,13 @@ export class Simulation {
     }
 
     private evaluateAdvisorEvents() {
-        // We will dispatch events to the scene/ui
-        let totalPollution = 0;
-        let highTrafficTiles = 0;
-        let roadTiles = 0;
-
-        for(let y=0; y<this.cityData.height; y++) {
-            for(let x=0; x<this.cityData.width; x++) {
-                totalPollution += this.cityData.pollutionGrid[y][x];
-                if (this.cityData.getTile(x, y) === TILE_TYPES.ROAD_BASE) {
-                    roadTiles++;
-                    if (this.cityData.trafficGrid[y][x] > 30) {
-                        highTrafficTiles++;
-                    }
-                }
-            }
-        }
-
-        // Tally total crime
-        let totalCrime = 0;
-        for(let y=0; y<this.cityData.height; y++) {
-            for(let x=0; x<this.cityData.width; x++) {
-                totalCrime += this.cityData.crimeGrid[y][x];
-            }
-        }
-
+        const metrics = this.getMetrics();
         const e = new CustomEvent('advisorEvent', { detail: {
-            totalPollution,
-            highTrafficTiles,
-            roadTiles,
+            totalPollution: metrics.totalPollution,
+            highTrafficTiles: metrics.highTrafficTiles,
+            roadTiles: metrics.roadTiles,
             population: this.cityData.population,
-            totalCrime
+            totalCrime: metrics.totalCrime
         }});
         window.dispatchEvent(e);
     }

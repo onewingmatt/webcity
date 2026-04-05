@@ -36,6 +36,9 @@ export const TILE_TYPES = {
     TRAIN_DEPOT: 192,
     SEAPORT: 195,
     AIRPORT: 198,
+    MAYOR_HOUSE: 201,
+    CASINO: 204,
+    AMUSEMENT_PARK: 207,
 
     // Note: 48 starts 3x3 zones. Let's put RAIL_BASE at the end of the tileset to avoid collisions,
     // since it needs a full 16 frames for auto-tiling.
@@ -63,7 +66,10 @@ export const TOOL_COSTS = {
     [TILE_TYPES.FIRE_STATION]: 500,
     [TILE_TYPES.TRAIN_DEPOT]: 500,
     [TILE_TYPES.SEAPORT]: 3000,
-    [TILE_TYPES.AIRPORT]: 10000
+    [TILE_TYPES.AIRPORT]: 10000,
+    [TILE_TYPES.MAYOR_HOUSE]: 0,
+    [TILE_TYPES.CASINO]: 0,
+    [TILE_TYPES.AMUSEMENT_PARK]: 0
 };
 
 export class CityData {
@@ -88,6 +94,13 @@ export class CityData {
     public dateMonth: number = 1;
     public dateYear: number = 1900;
     
+    // History (for Evaluation Graph)
+    public history: { year: number, pop: number, funds: number, crime: number, pollution: number }[] = [];
+
+    // Gifts
+    public unlockedGifts: Set<number> = new Set();
+    public placedGifts: Set<number> = new Set();
+
     // Budget
     public taxRate: number = 0.07; // 7% tax rate default
     public lastTaxesCollected: number = 0;
