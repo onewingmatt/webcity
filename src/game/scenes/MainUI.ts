@@ -7,6 +7,13 @@ export class MainUI extends Phaser.Scene {
     private popText!: Phaser.GameObjects.Text;
     
     private rciBars!: { r: Phaser.GameObjects.Graphics, c: Phaser.GameObjects.Graphics, i: Phaser.GameObjects.Graphics };
+    private modeText!: Phaser.GameObjects.Text;
+
+    // Advisor UI
+    private advisorContainer!: Phaser.GameObjects.Container;
+    private advisorText!: Phaser.GameObjects.Text;
+    private messageQueue: string[] = [];
+    private isMessageActive = false;
 
     constructor() {
         super({ key: 'MainUI', active: false });
@@ -47,6 +54,11 @@ export class MainUI extends Phaser.Scene {
         this.dateText = this.add.text(300, 8, 'Jan 1900', textStyle);
         this.popText = this.add.text(500, 8, 'Pop: 0', textStyle);
         
+        this.modeText = this.add.text(this.cameras.main.width - 200, 8, 'View: Normal (P)', textStyle);
+        this.events.on('pollutionToggled', (isPollution: boolean) => {
+            this.modeText.setText(`View: ${isPollution ? 'Pollution' : 'Normal'} (P)`);
+        });
+
         // Setup RCI Meter
         this.setupRCIMeter();
         
@@ -103,6 +115,114 @@ export class MainUI extends Phaser.Scene {
         cityScene.events.on('prevTool', () => {
             this.setActiveTool(getPrevToolId(), toolIcons);
         });
+
+        // Setup Advisor UI
+        this.setupAdvisorUI();
+
+        // Listen for Advisor Events from Simulation
+        window.addEventListener('advisorEvent', (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            this.handleSimulationEvents(detail);
+        });
+    }
+
+    setupAdvisorUI() {
+        const boxWidth = 400;
+        const boxHeight = 100;
+        const x = this.cameras.main.width / 2 - boxWidth / 2;
+        const y = this.cameras.main.height - boxHeight - 20;
+
+        this.advisorContainer = this.add.container(x, y);
+        this.advisorContainer.setDepth(100);
+        this.advisorContainer.setVisible(false);
+
+        const bg = this.add.graphics();
+        bg.fillStyle(0x000080, 0.9);
+        bg.fillRect(0, 0, boxWidth, boxHeight);
+        bg.lineStyle(4, 0xffffff, 1);
+        bg.strokeRect(0, 0, boxWidth, boxHeight);
+
+        const portraitBg = this.add.graphics();
+        portraitBg.fillStyle(0x000000, 1);
+        portraitBg.fillRect(16, 18, 64, 64);
+        portraitBg.lineStyle(2, 0xffffff, 1);
+        portraitBg.strokeRect(16, 18, 64, 64);
+
+        const portrait = this.add.image(48, 50, 'advisor');
+
+        this.advisorText = this.add.text(96, 20, '', {
+            fontSize: '16px',
+            color: '#ffffff',
+            fontFamily: 'monospace',
+            wordWrap: { width: 280 }
+        });
+
+        const clickPrompt = this.add.text(boxWidth - 80, boxHeight - 25, 'Click >', {
+            fontSize: '14px',
+            color: '#ffff00',
+            fontFamily: 'monospace'
+        });
+        // Blinking prompt
+        this.tweens.add({
+            targets: clickPrompt,
+            alpha: 0,
+            duration: 500,
+            ease: 'Linear',
+            yoyo: true,
+            repeat: -1
+        });
+
+        // Click to dismiss/next
+        bg.setInteractive(new Phaser.Geom.Rectangle(0, 0, boxWidth, boxHeight), Phaser.Geom.Rectangle.Contains);
+        bg.on('pointerdown', () => this.advanceMessage());
+
+        this.advisorContainer.add([bg, portraitBg, portrait, this.advisorText, clickPrompt]);
+    }
+
+    handleSimulationEvents(stats: any) {
+        const { totalPollution, highTrafficTiles, roadTiles, population } = stats;
+
+        // Thresholds for triggering messages
+        if (population > 500 && Math.random() < 0.1) {
+            this.queueMessage("Mayor, our city is growing! Keep up the good work zoning new areas.");
+        }
+
+        if (totalPollution > 100) {
+            this.queueMessage("Warning! Pollution levels are rising. Citizens are complaining. Consider separating industry from residential zones.");
+        }
+
+        if (roadTiles > 20 && highTrafficTiles / roadTiles > 0.3) {
+             this.queueMessage("Traffic is terrible! We need a better road network. Try adding more connections or alternative routes.");
+        }
+    }
+
+    queueMessage(text: string) {
+        // Prevent spamming the exact same message back to back
+        if (this.messageQueue[this.messageQueue.length - 1] === text) return;
+
+        this.messageQueue.push(text);
+        if (!this.isMessageActive) {
+            this.showNextMessage();
+        }
+    }
+
+    showNextMessage() {
+        if (this.messageQueue.length > 0) {
+            this.isMessageActive = true;
+            const msg = this.messageQueue[0];
+            this.advisorText.setText(msg);
+            this.advisorContainer.setVisible(true);
+        } else {
+            this.isMessageActive = false;
+            this.advisorContainer.setVisible(false);
+        }
+    }
+
+    advanceMessage() {
+        if (this.isMessageActive) {
+            this.messageQueue.shift();
+            this.showNextMessage();
+        }
     }
 
     setupRCIMeter() {

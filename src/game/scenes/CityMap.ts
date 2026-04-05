@@ -12,6 +12,8 @@ export class CityMap extends Phaser.Scene {
     private tileSize = 16;
     private is3x3Mode = false;
     
+    public showPollutionLayer = false;
+
     private cityData!: CityData;
     private simulation!: Simulation;
     private layer!: Phaser.Tilemaps.TilemapLayer;
@@ -65,6 +67,13 @@ export class CityMap extends Phaser.Scene {
         
         // Prevent context menu
         this.input.mouse?.disableContextMenu();
+
+        // Setup Pollution Toggle
+        this.input.keyboard?.on('keydown-P', () => {
+            this.showPollutionLayer = !this.showPollutionLayer;
+            this.scene.get('MainUI').events.emit('pollutionToggled', this.showPollutionLayer);
+            this.tickSimulation(); // Force redraw
+        });
 
         // Setup simulation timer
         this.time.addEvent({
@@ -256,16 +265,40 @@ export class CityMap extends Phaser.Scene {
                     tile = this.layer.putTileAt(frame, x, y);
                 }
                 
-                // Visual indicator for lack of power: darken unpowered zones
-                const hasPower = this.cityData.powerGrid[y][x];
-                const type = this.cityData.getTile(x, y);
-                const needsPower = type >= TILE_TYPES.RES_EMPTY;
-
+                // Visual indicators
                 if (tile) {
-                    if (needsPower && !hasPower) {
-                        tile.tint = 0x888888; // Darken if unpowered
+                    const type = this.cityData.getTile(x, y);
+
+                    if (this.showPollutionLayer) {
+                        // Pollution overlay mode
+                        const pollution = this.cityData.pollutionGrid[y][x];
+                        if (pollution > 20) {
+                            tile.tint = 0xff0000; // Heavy pollution
+                        } else if (pollution > 5) {
+                            tile.tint = 0xffff00; // Medium pollution
+                        } else {
+                            tile.tint = 0xffffff;
+                        }
                     } else {
-                        tile.tint = 0xffffff;
+                        // Normal play mode
+                        const hasPower = this.cityData.powerGrid[y][x];
+                        const needsPower = type >= TILE_TYPES.RES_EMPTY;
+
+                        // Check traffic on roads
+                        if (type === TILE_TYPES.ROAD_BASE) {
+                            const traffic = this.cityData.trafficGrid[y][x];
+                            if (traffic > 20) {
+                                tile.tint = 0x666666; // Heavy traffic darkens road
+                            } else if (traffic > 5) {
+                                tile.tint = 0xaaaaaa; // Light traffic
+                            } else {
+                                tile.tint = 0xffffff;
+                            }
+                        } else if (needsPower && !hasPower) {
+                            tile.tint = 0x888888; // Darken if unpowered
+                        } else {
+                            tile.tint = 0xffffff;
+                        }
                     }
                 }
             }

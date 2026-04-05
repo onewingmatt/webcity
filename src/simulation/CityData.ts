@@ -32,6 +32,11 @@ export class CityData {
     // Which tiles have power
     public powerGrid: boolean[][];
     
+    // Simulation Grids
+    public trafficGrid: number[][];
+    public pollutionGrid: number[][];
+    public landValueGrid: number[][];
+
     // Economy and Stats
     public funds: number = 20000;
     public population: number = 0;
@@ -49,14 +54,23 @@ export class CityData {
         this.typeGrid = [];
         this.frameGrid = [];
         this.powerGrid = [];
+        this.trafficGrid = [];
+        this.pollutionGrid = [];
+        this.landValueGrid = [];
         for (let y = 0; y < height; y++) {
             this.typeGrid[y] = [];
             this.frameGrid[y] = [];
             this.powerGrid[y] = [];
+            this.trafficGrid[y] = [];
+            this.pollutionGrid[y] = [];
+            this.landValueGrid[y] = [];
             for (let x = 0; x < width; x++) {
                 this.typeGrid[y][x] = TILE_TYPES.GRASS;
                 this.frameGrid[y][x] = TILE_TYPES.GRASS;
                 this.powerGrid[y][x] = false;
+                this.trafficGrid[y][x] = 0;
+                this.pollutionGrid[y][x] = 0;
+                this.landValueGrid[y][x] = 0;
             }
         }
     }
