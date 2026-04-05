@@ -12,6 +12,8 @@ export class CityMap extends Phaser.Scene {
     private tileSize = 16;
     private is3x3Mode = false;
     
+    public showPollutionLayer = false;
+
     private cityData!: CityData;
     private simulation!: Simulation;
     private layer!: Phaser.Tilemaps.TilemapLayer;
@@ -65,6 +67,13 @@ export class CityMap extends Phaser.Scene {
         
         // Prevent context menu
         this.input.mouse?.disableContextMenu();
+
+        // Setup Pollution Toggle
+        this.input.keyboard?.on('keydown-P', () => {
+            this.showPollutionLayer = !this.showPollutionLayer;
+            this.scene.get('MainUI').events.emit('pollutionToggled', this.showPollutionLayer);
+            this.tickSimulation(); // Force redraw
+        });
 
         // Setup simulation timer
         this.time.addEvent({
@@ -160,14 +169,10 @@ export class CityMap extends Phaser.Scene {
                 let originX = x;
                 let originY = y;
                 // Since our 3x3 frames are laid out in a grid, we need to find the root.
-                // An easier way is just to search the local 3x3 area for the top-left tile of this zone.
-                // For simplicity in this MVP, we assume clicking ANY tile in a 3x3 clears the block.
-                // We'll calculate the top-left based on the frame offset:
                 const frame = this.cityData.getFrame(x, y);
-                const baseType = targetType;
-                const offset = frame - baseType;
+                const offset = frame - targetType;
                 const dy = Math.floor(offset / 16);
-                const dx = offset % 16; // Note: our tileset is 16 tiles wide
+                const dx = offset % 16;
                 
                 originX = x - dx;
                 originY = y - dy;
@@ -240,6 +245,8 @@ export class CityMap extends Phaser.Scene {
             case TILE_TYPES.COM_EMPTY: return 100;
             case TILE_TYPES.IND_EMPTY: return 100;
             case TILE_TYPES.POWER_PLANT: return 3000;
+            case TILE_TYPES.POLICE_STATION: return 500;
+            case TILE_TYPES.FIRE_STATION: return 500;
             default: return 0;
         }
     }
@@ -256,16 +263,40 @@ export class CityMap extends Phaser.Scene {
                     tile = this.layer.putTileAt(frame, x, y);
                 }
                 
-                // Visual indicator for lack of power: darken unpowered zones
-                const hasPower = this.cityData.powerGrid[y][x];
-                const type = this.cityData.getTile(x, y);
-                const needsPower = type >= TILE_TYPES.RES_EMPTY;
-
+                // Visual indicators
                 if (tile) {
-                    if (needsPower && !hasPower) {
-                        tile.tint = 0x888888; // Darken if unpowered
+                    const type = this.cityData.getTile(x, y);
+
+                    if (this.showPollutionLayer) {
+                        // Pollution overlay mode
+                        const pollution = this.cityData.pollutionGrid[y][x];
+                        if (pollution > 20) {
+                            tile.tint = 0xff0000; // Heavy pollution
+                        } else if (pollution > 5) {
+                            tile.tint = 0xffff00; // Medium pollution
+                        } else {
+                            tile.tint = 0xffffff;
+                        }
                     } else {
-                        tile.tint = 0xffffff;
+                        // Normal play mode
+                        const hasPower = this.cityData.powerGrid[y][x];
+                        const needsPower = type >= TILE_TYPES.RES_EMPTY;
+
+                        // Check traffic on roads
+                        if (type === TILE_TYPES.ROAD_BASE) {
+                            const traffic = this.cityData.trafficGrid[y][x];
+                            if (traffic > 20) {
+                                tile.tint = 0x666666; // Heavy traffic darkens road
+                            } else if (traffic > 5) {
+                                tile.tint = 0xaaaaaa; // Light traffic
+                            } else {
+                                tile.tint = 0xffffff;
+                            }
+                        } else if (needsPower && !hasPower) {
+                            tile.tint = 0x888888; // Darken if unpowered
+                        } else {
+                            tile.tint = 0xffffff;
+                        }
                     }
                 }
             }

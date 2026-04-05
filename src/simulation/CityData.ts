@@ -3,13 +3,30 @@ export const TILE_TYPES = {
     DIRT: 1,
     ROAD_BASE: 16,
     POWER_LINE_BASE: 32,
-    RES_EMPTY: 48, // 3x3 starts here (ROW 3)
-    RES_BUILT: 51,
-    COM_EMPTY: 54,
-    COM_BUILT: 57,
-    IND_EMPTY: 60,
-    IND_BUILT: 96, // ROW 6
-    POWER_PLANT: 99
+
+    // 3x3 Zones - each block is 3 wide, taking up 3 horizontal tiles.
+    // Tileset is 16 columns wide. Maximum 5 blocks per row (indices 0, 3, 6, 9, 12).
+
+    // Row 3 (starts at 48)
+    RES_EMPTY: 48,
+    RES_LOW: 51,
+    RES_MED: 54,
+    RES_HIGH: 57,
+    COM_EMPTY: 60,
+
+    // Row 6 (starts at 96)
+    COM_LOW: 96,
+    COM_MED: 99,
+    COM_HIGH: 102,
+    IND_EMPTY: 105,
+    IND_LOW: 108,
+
+    // Row 9 (starts at 144)
+    IND_MED: 144,
+    IND_HIGH: 147,
+    POWER_PLANT: 150,
+    POLICE_STATION: 153,
+    FIRE_STATION: 156
 };
 
 export const TOOL_COSTS = {
@@ -19,7 +36,9 @@ export const TOOL_COSTS = {
     [TILE_TYPES.RES_EMPTY]: 100,
     [TILE_TYPES.COM_EMPTY]: 100,
     [TILE_TYPES.IND_EMPTY]: 100,
-    [TILE_TYPES.POWER_PLANT]: 3000
+    [TILE_TYPES.POWER_PLANT]: 3000,
+    [TILE_TYPES.POLICE_STATION]: 500,
+    [TILE_TYPES.FIRE_STATION]: 500
 };
 
 export class CityData {
@@ -32,12 +51,23 @@ export class CityData {
     // Which tiles have power
     public powerGrid: boolean[][];
     
+    // Simulation Grids
+    public trafficGrid: number[][];
+    public pollutionGrid: number[][];
+    public landValueGrid: number[][];
+    public crimeGrid: number[][];
+
     // Economy and Stats
     public funds: number = 20000;
     public population: number = 0;
     public dateMonth: number = 1;
     public dateYear: number = 1900;
     
+    // Budget
+    public taxRate: number = 0.07; // 7% tax rate default
+    public lastTaxesCollected: number = 0;
+    public lastUpkeepPaid: number = 0;
+
     // RCI Demand (-1.0 to 1.0)
     public demandR: number = 0.5;
     public demandC: number = 0.5;
@@ -49,14 +79,26 @@ export class CityData {
         this.typeGrid = [];
         this.frameGrid = [];
         this.powerGrid = [];
+        this.trafficGrid = [];
+        this.pollutionGrid = [];
+        this.landValueGrid = [];
+        this.crimeGrid = [];
         for (let y = 0; y < height; y++) {
             this.typeGrid[y] = [];
             this.frameGrid[y] = [];
             this.powerGrid[y] = [];
+            this.trafficGrid[y] = [];
+            this.pollutionGrid[y] = [];
+            this.landValueGrid[y] = [];
+            this.crimeGrid[y] = [];
             for (let x = 0; x < width; x++) {
                 this.typeGrid[y][x] = TILE_TYPES.GRASS;
                 this.frameGrid[y][x] = TILE_TYPES.GRASS;
                 this.powerGrid[y][x] = false;
+                this.trafficGrid[y][x] = 0;
+                this.pollutionGrid[y][x] = 0;
+                this.landValueGrid[y][x] = 0;
+                this.crimeGrid[y][x] = 0;
             }
         }
     }
