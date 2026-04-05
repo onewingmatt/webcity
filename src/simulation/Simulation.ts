@@ -31,63 +31,114 @@ export class Simulation {
             for(let x=0; x<this.cityData.width; x++) {
                 const type = this.cityData.getTile(x, y);
                 
+                // Calculate local land value (simplified)
+                // High pollution drastically reduces land value.
+                const pollution = this.cityData.pollutionGrid[y][x];
+                let landValue = 50 - pollution;
+                this.cityData.landValueGrid[y][x] = landValue;
+
+                const isIndustry = type >= TILE_TYPES.IND_EMPTY && type <= TILE_TYPES.IND_HIGH;
+                const isResidential = type >= TILE_TYPES.RES_EMPTY && type <= TILE_TYPES.RES_HIGH;
+                const isCommercial = type >= TILE_TYPES.COM_EMPTY && type <= TILE_TYPES.COM_HIGH;
+
                 // Traffic and Pollution generation
-                if (type === TILE_TYPES.IND_BUILT || type === TILE_TYPES.POWER_PLANT) {
+                if ((isIndustry && type !== TILE_TYPES.IND_EMPTY) || type === TILE_TYPES.POWER_PLANT) {
                     this.cityData.pollutionGrid[y][x] += 10;
                 }
 
-                // Tally existing buildings
-                if (type === TILE_TYPES.RES_BUILT) { popCount += 10; builtR++; }
-                if (type === TILE_TYPES.COM_BUILT) { popCount += 10; builtC++; }
-                if (type === TILE_TYPES.IND_BUILT) { builtI++; } // Industry doesn't directly add population
+                // Tally existing buildings (based on density)
+                if (isResidential) {
+                    if (type === TILE_TYPES.RES_LOW) { popCount += 10; builtR++; }
+                    if (type === TILE_TYPES.RES_MED) { popCount += 20; builtR += 2; }
+                    if (type === TILE_TYPES.RES_HIGH) { popCount += 40; builtR += 4; }
+                }
+                if (isCommercial) {
+                    if (type === TILE_TYPES.COM_LOW) { popCount += 10; builtC++; }
+                    if (type === TILE_TYPES.COM_MED) { popCount += 20; builtC += 2; }
+                    if (type === TILE_TYPES.COM_HIGH) { popCount += 40; builtC += 4; }
+                }
+                if (isIndustry && type !== TILE_TYPES.IND_EMPTY) {
+                     // Industry doesn't directly add population
+                     builtI += (type === TILE_TYPES.IND_LOW ? 1 : type === TILE_TYPES.IND_MED ? 2 : 4);
+                }
 
                 // Built zones generate traffic by commuting
-                if (type === TILE_TYPES.RES_BUILT) {
+                if (isResidential && type !== TILE_TYPES.RES_EMPTY) {
                     if (Math.random() < 0.5) { // Run commute logic for some homes every tick to save perf
                          this.calculateCommute(x, y);
                     }
                 }
 
-                // If it's an empty zone
-                if (type === TILE_TYPES.RES_EMPTY || type === TILE_TYPES.COM_EMPTY || type === TILE_TYPES.IND_EMPTY) {
-                    // Check if there is demand for this zone type
-                    let hasDemand = false;
-                    if (type === TILE_TYPES.RES_EMPTY && this.cityData.demandR > 0) hasDemand = true;
-                    if (type === TILE_TYPES.COM_EMPTY && this.cityData.demandC > 0) hasDemand = true;
-                    if (type === TILE_TYPES.IND_EMPTY && this.cityData.demandI > 0) hasDemand = true;
+                // Incremental Growth/Decay Logic
+                if (isResidential || isCommercial || isIndustry) {
+                    // Find root of 3x3 to only process the block once (when we are on the top-left tile)
+                    const frame = this.cityData.getFrame(x, y);
+                    const offset = frame - type;
+                    const dy = Math.floor(offset / 16);
+                    const dx = offset % 16;
 
-                    // Calculate local land value (simplified)
-                    // High pollution drastically reduces land value.
-                    // To upgrade, land value needs to be acceptable.
-                    const pollution = this.cityData.pollutionGrid[y][x];
-                    let landValue = 50 - pollution;
-                    this.cityData.landValueGrid[y][x] = landValue;
+                    if (dx === 0 && dy === 0) { // Top-left tile of the 3x3
+                        let hasDemand = false;
+                        if (isResidential && this.cityData.demandR > 0) hasDemand = true;
+                        if (isCommercial && this.cityData.demandC > 0) hasDemand = true;
+                        if (isIndustry && this.cityData.demandI > 0) hasDemand = true;
 
-                    // Must be powered, adjacent to road, have demand, and acceptable land value to grow
-                    const canGrowEnv = type !== TILE_TYPES.RES_EMPTY || landValue > 10; // Res won't grow in high pollution
+                        // Check environment (needs power, road access, and acceptable land value)
+                        const hasPower = this.cityData.powerGrid[y][x];
+                        const hasRoad = this.isAdjacentToRoad(x, y) || this.isAdjacentToRoad(x+1, y) || this.isAdjacentToRoad(x+2, y) ||
+                                        this.isAdjacentToRoad(x, y+1) || this.isAdjacentToRoad(x+2, y+1) ||
+                                        this.isAdjacentToRoad(x, y+2) || this.isAdjacentToRoad(x+1, y+2) || this.isAdjacentToRoad(x+2, y+2);
 
-                    if (this.cityData.powerGrid[y][x] && this.isAdjacentToRoad(x, y) && hasDemand && canGrowEnv) {
-                        if (Math.random() < 0.1) { // 10% chance per month to grow if conditions met
-                            // Upgrade the whole 3x3
-                            let newType = TILE_TYPES.RES_BUILT;
-                            if (type === TILE_TYPES.COM_EMPTY) newType = TILE_TYPES.COM_BUILT;
-                            if (type === TILE_TYPES.IND_EMPTY) newType = TILE_TYPES.IND_BUILT;
-                            
-                            // Find root of 3x3
-                            const frame = this.cityData.getFrame(x, y);
-                            const offset = frame - type;
-                            const dy = Math.floor(offset / 16);
-                            const dx = offset % 16;
-                            
-                            let originX = x - dx;
-                            let originY = y - dy;
-                            
-                            // Transform whole block
+                        // Res/Com need decent land value to grow/maintain high density
+                        const canGrowEnv = isIndustry || landValue > 10;
+
+                        let nextType = type;
+
+                        // Evaluate Growth
+                        if (hasPower && hasRoad && canGrowEnv && hasDemand) {
+                            if (Math.random() < 0.1) { // 10% chance per month to grow if conditions met
+                                if (type === TILE_TYPES.RES_EMPTY) nextType = TILE_TYPES.RES_LOW;
+                                else if (type === TILE_TYPES.RES_LOW && landValue > 20) nextType = TILE_TYPES.RES_MED;
+                                else if (type === TILE_TYPES.RES_MED && landValue > 35) nextType = TILE_TYPES.RES_HIGH;
+
+                                else if (type === TILE_TYPES.COM_EMPTY) nextType = TILE_TYPES.COM_LOW;
+                                else if (type === TILE_TYPES.COM_LOW && landValue > 20) nextType = TILE_TYPES.COM_MED;
+                                else if (type === TILE_TYPES.COM_MED && landValue > 35) nextType = TILE_TYPES.COM_HIGH;
+
+                                else if (type === TILE_TYPES.IND_EMPTY) nextType = TILE_TYPES.IND_LOW;
+                                else if (type === TILE_TYPES.IND_LOW) nextType = TILE_TYPES.IND_MED;
+                                else if (type === TILE_TYPES.IND_MED) nextType = TILE_TYPES.IND_HIGH;
+                            }
+                        }
+
+                        // Evaluate Decay (if high pollution or no power)
+                        if ((!hasPower || landValue < -10) && type !== TILE_TYPES.RES_EMPTY && type !== TILE_TYPES.COM_EMPTY && type !== TILE_TYPES.IND_EMPTY) {
+                            if (Math.random() < 0.2) {
+                                if (isResidential) {
+                                    if (type === TILE_TYPES.RES_HIGH) nextType = TILE_TYPES.RES_MED;
+                                    else if (type === TILE_TYPES.RES_MED) nextType = TILE_TYPES.RES_LOW;
+                                    else if (type === TILE_TYPES.RES_LOW) nextType = TILE_TYPES.RES_EMPTY;
+                                }
+                                if (isCommercial) {
+                                    if (type === TILE_TYPES.COM_HIGH) nextType = TILE_TYPES.COM_MED;
+                                    else if (type === TILE_TYPES.COM_MED) nextType = TILE_TYPES.COM_LOW;
+                                    else if (type === TILE_TYPES.COM_LOW) nextType = TILE_TYPES.COM_EMPTY;
+                                }
+                                if (isIndustry) {
+                                    if (type === TILE_TYPES.IND_HIGH) nextType = TILE_TYPES.IND_MED;
+                                    else if (type === TILE_TYPES.IND_MED) nextType = TILE_TYPES.IND_LOW;
+                                    else if (type === TILE_TYPES.IND_LOW) nextType = TILE_TYPES.IND_EMPTY;
+                                }
+                            }
+                        }
+
+                        // Apply new type to the 3x3 block if it changed
+                        if (nextType !== type) {
                             for (let cy = 0; cy < 3; cy++) {
                                 for (let cx = 0; cx < 3; cx++) {
-                                    if (this.cityData.isValid(originX+cx, originY+cy)) {
-                                        this.cityData.typeGrid[originY+cy][originX+cx] = newType;
-                                        this.cityData.frameGrid[originY+cy][originX+cx] = newType + (cy * 16) + cx;
+                                    if (this.cityData.isValid(x+cx, y+cy)) {
+                                        this.cityData.typeGrid[y+cy][x+cx] = nextType;
+                                        this.cityData.frameGrid[y+cy][x+cx] = nextType + (cy * 16) + cx;
                                     }
                                 }
                             }
@@ -183,7 +234,8 @@ export class Simulation {
                 const adjY = current.y + n.dy;
                 if (this.cityData.isValid(adjX, adjY)) {
                     const type = this.cityData.getTile(adjX, adjY);
-                    if (type === TILE_TYPES.COM_BUILT || type === TILE_TYPES.IND_BUILT) {
+                    if ((type >= TILE_TYPES.COM_EMPTY && type <= TILE_TYPES.COM_HIGH && type !== TILE_TYPES.COM_EMPTY) ||
+                        (type >= TILE_TYPES.IND_EMPTY && type <= TILE_TYPES.IND_HIGH && type !== TILE_TYPES.IND_EMPTY)) {
                         destinationFound = true;
                         // Apply traffic to path
                         for (const step of current.path) {

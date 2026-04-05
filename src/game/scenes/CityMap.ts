@@ -169,14 +169,10 @@ export class CityMap extends Phaser.Scene {
                 let originX = x;
                 let originY = y;
                 // Since our 3x3 frames are laid out in a grid, we need to find the root.
-                // An easier way is just to search the local 3x3 area for the top-left tile of this zone.
-                // For simplicity in this MVP, we assume clicking ANY tile in a 3x3 clears the block.
-                // We'll calculate the top-left based on the frame offset:
                 const frame = this.cityData.getFrame(x, y);
-                const baseType = targetType;
-                const offset = frame - baseType;
+                const offset = frame - targetType;
                 const dy = Math.floor(offset / 16);
-                const dx = offset % 16; // Note: our tileset is 16 tiles wide
+                const dx = offset % 16;
                 
                 originX = x - dx;
                 originY = y - dy;

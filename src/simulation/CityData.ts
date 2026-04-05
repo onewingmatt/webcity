@@ -3,13 +3,28 @@ export const TILE_TYPES = {
     DIRT: 1,
     ROAD_BASE: 16,
     POWER_LINE_BASE: 32,
-    RES_EMPTY: 48, // 3x3 starts here (ROW 3)
-    RES_BUILT: 51,
-    COM_EMPTY: 54,
-    COM_BUILT: 57,
-    IND_EMPTY: 60,
-    IND_BUILT: 96, // ROW 6
-    POWER_PLANT: 99
+
+    // 3x3 Zones - each block is 3 wide, taking up 3 horizontal tiles.
+    // Tileset is 16 columns wide. Maximum 5 blocks per row (indices 0, 3, 6, 9, 12).
+
+    // Row 3 (starts at 48)
+    RES_EMPTY: 48,
+    RES_LOW: 51,
+    RES_MED: 54,
+    RES_HIGH: 57,
+    COM_EMPTY: 60,
+
+    // Row 6 (starts at 96)
+    COM_LOW: 96,
+    COM_MED: 99,
+    COM_HIGH: 102,
+    IND_EMPTY: 105,
+    IND_LOW: 108,
+
+    // Row 9 (starts at 144)
+    IND_MED: 144,
+    IND_HIGH: 147,
+    POWER_PLANT: 150
 };
 
 export const TOOL_COSTS = {

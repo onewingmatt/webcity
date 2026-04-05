@@ -120,9 +120,14 @@ export class MainUI extends Phaser.Scene {
         this.setupAdvisorUI();
 
         // Listen for Advisor Events from Simulation
-        window.addEventListener('advisorEvent', (e: Event) => {
+        const advisorListener = (e: Event) => {
             const detail = (e as CustomEvent).detail;
             this.handleSimulationEvents(detail);
+        };
+        window.addEventListener('advisorEvent', advisorListener);
+
+        this.events.on('shutdown', () => {
+            window.removeEventListener('advisorEvent', advisorListener);
         });
     }
 
