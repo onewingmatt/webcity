@@ -69,9 +69,9 @@ export class CityMap extends Phaser.Scene {
         this.input.mouse?.disableContextMenu();
 
         // Setup Pollution Toggle
-        this.input.keyboard?.on('keydown-P', () => {
+        this.input.keyboard?.on('keydown-V', () => {
             this.showPollutionLayer = !this.showPollutionLayer;
-            this.scene.get('MainUI').events.emit('pollutionToggled', this.showPollutionLayer);
+            this.scene.get('MainUI').events.emit('viewModeChanged', this.showPollutionLayer ? 'Pollution' : 'Normal');
             this.tickSimulation(); // Force redraw
         });
 
@@ -224,9 +224,26 @@ export class CityMap extends Phaser.Scene {
         } else {
             // Place 1x1 Road, Rail, Power, or Park
             const targetType = this.cityData.getTile(x, y);
+
+            // Handle Bridging
+            if (targetType === TILE_TYPES.WATER) {
+                if (currentTool === TILE_TYPES.ROAD_BASE) {
+                    if (this.cityData.funds >= this.getToolCost(TILE_TYPES.BRIDGE_ROAD)) {
+                        this.cityData.setTile(x, y, TILE_TYPES.BRIDGE_ROAD, true);
+                        this.cityData.funds -= this.getToolCost(TILE_TYPES.BRIDGE_ROAD);
+                        // We handled cost manually since bridging dynamically swaps the tool
+                        return;
+                    }
+                } else if (currentTool === TILE_TYPES.RAIL_BASE) {
+                    if (this.cityData.funds >= this.getToolCost(TILE_TYPES.BRIDGE_RAIL)) {
+                        this.cityData.setTile(x, y, TILE_TYPES.BRIDGE_RAIL, true);
+                        this.cityData.funds -= this.getToolCost(TILE_TYPES.BRIDGE_RAIL);
+                        return;
+                    }
+                }
+            }
             // Allow placing on grass, dirt, or tree (which gets bulldozed implicitly)
-            // Cannot place on water! (unless bridging, skipping for MVP)
-            if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
+            else if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
                 if (targetType !== currentTool) {
                     this.cityData.setTile(x, y, currentTool, true);
                     placed = true;
@@ -245,6 +262,8 @@ export class CityMap extends Phaser.Scene {
             case TILE_TYPES.PARK: return 10;
             case TILE_TYPES.ROAD_BASE: return 10;
             case TILE_TYPES.RAIL_BASE: return 20;
+            case TILE_TYPES.BRIDGE_ROAD: return 50;
+            case TILE_TYPES.BRIDGE_RAIL: return 100;
             case TILE_TYPES.POWER_LINE_BASE: return 5;
             case TILE_TYPES.RES_EMPTY: return 100;
             case TILE_TYPES.COM_EMPTY: return 100;
@@ -253,6 +272,8 @@ export class CityMap extends Phaser.Scene {
             case TILE_TYPES.POLICE_STATION: return 500;
             case TILE_TYPES.FIRE_STATION: return 500;
             case TILE_TYPES.TRAIN_DEPOT: return 500;
+            case TILE_TYPES.SEAPORT: return 3000;
+            case TILE_TYPES.AIRPORT: return 10000;
             default: return 0;
         }
     }
@@ -289,8 +310,8 @@ export class CityMap extends Phaser.Scene {
                         const is3x3 = type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE;
                         const needsPower = is3x3;
 
-                        // Check traffic on roads
-                        if (type === TILE_TYPES.ROAD_BASE) {
+                        // Check traffic on roads/bridges
+                        if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD) {
                             const traffic = this.cityData.trafficGrid[y][x];
                             if (traffic > 20) {
                                 tile.tint = 0x666666; // Heavy traffic darkens road

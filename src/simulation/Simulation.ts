@@ -28,6 +28,9 @@ export class Simulation {
         // Calculate terrain/park land value modifiers
         this.calculateTerrainAuras();
 
+        // Process Disasters (Fires)
+        this.processFires();
+
         let popCount = 0;
         let builtR = 0;
         let builtC = 0;
@@ -117,6 +120,16 @@ export class Simulation {
                         let nextType = type;
 
                         // Evaluate Growth
+                        let hasAirportLocal = false;
+                        let hasSeaportLocal = false;
+                        for(let py=0; py<this.cityData.height; py++) {
+                            for(let px=0; px<this.cityData.width; px++) {
+                                const pType = this.cityData.getTile(px, py);
+                                if (pType === TILE_TYPES.AIRPORT && this.cityData.powerGrid[py][px]) hasAirportLocal = true;
+                                if (pType === TILE_TYPES.SEAPORT && this.cityData.powerGrid[py][px]) hasSeaportLocal = true;
+                            }
+                        }
+
                         if (hasPower && hasRoad && canGrowEnv && hasDemand) {
                             if (Math.random() < 0.1) { // 10% chance per month to grow if conditions met
                                 if (type === TILE_TYPES.RES_EMPTY) nextType = TILE_TYPES.RES_LOW;
@@ -125,11 +138,11 @@ export class Simulation {
 
                                 else if (type === TILE_TYPES.COM_EMPTY) nextType = TILE_TYPES.COM_LOW;
                                 else if (type === TILE_TYPES.COM_LOW && landValue > 20) nextType = TILE_TYPES.COM_MED;
-                                else if (type === TILE_TYPES.COM_MED && landValue > 35) nextType = TILE_TYPES.COM_HIGH;
+                                else if (type === TILE_TYPES.COM_MED && landValue > 35 && hasAirportLocal) nextType = TILE_TYPES.COM_HIGH;
 
                                 else if (type === TILE_TYPES.IND_EMPTY) nextType = TILE_TYPES.IND_LOW;
                                 else if (type === TILE_TYPES.IND_LOW) nextType = TILE_TYPES.IND_MED;
-                                else if (type === TILE_TYPES.IND_MED) nextType = TILE_TYPES.IND_HIGH;
+                                else if (type === TILE_TYPES.IND_MED && hasSeaportLocal) nextType = TILE_TYPES.IND_HIGH;
                             }
                         }
 
@@ -173,13 +186,42 @@ export class Simulation {
         // Diffuse pollution
         this.diffusePollution();
 
+        // Randomly start a fire (disaster mechanic)
+        // Happens rarely, but more likely if crime/pollution is high and no police/fire coverage.
+        if (Math.random() < 0.05) {
+            const rx = Math.floor(Math.random() * this.cityData.width);
+            const ry = Math.floor(Math.random() * this.cityData.height);
+            const type = this.cityData.getTile(rx, ry);
+            if (this.isFlammable(type)) {
+                this.cityData.setTile(rx, ry, TILE_TYPES.FIRE, true);
+
+                // Dispatch advisor event for disaster
+                const e = new CustomEvent('advisorEvent', { detail: {
+                    disaster: 'FIRE',
+                    x: rx, y: ry
+                }});
+                window.dispatchEvent(e);
+            }
+        }
+
         // Finalize Population (divided by 9 since a 3x3 block is 9 tiles, we counted each tile)
         this.cityData.population = Math.floor(popCount / 9);
         builtR = Math.floor(builtR / 9);
         builtC = Math.floor(builtC / 9);
         builtI = Math.floor(builtI / 9);
         
-        this.updateRCI(builtR, builtC, builtI);
+        // Track Ports
+        let hasAirport = false;
+        let hasSeaport = false;
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                const type = this.cityData.getTile(x, y);
+                if (type === TILE_TYPES.AIRPORT && this.cityData.powerGrid[y][x]) hasAirport = true;
+                if (type === TILE_TYPES.SEAPORT && this.cityData.powerGrid[y][x]) hasSeaport = true;
+            }
+        }
+
+        this.updateRCI(builtR, builtC, builtI, hasAirport, hasSeaport);
 
         // Trigger Advisor events
         this.evaluateAdvisorEvents();
@@ -269,9 +311,77 @@ export class Simulation {
         }
     }
 
+    private processFires() {
+        // Collect fire stations for coverage checks
+        const fireStations: {x: number, y: number}[] = [];
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                if (this.cityData.getTile(x, y) === TILE_TYPES.FIRE_STATION && this.cityData.powerGrid[y][x]) {
+                    fireStations.push({x, y});
+                }
+            }
+        }
+
+        const fireRadius = 15;
+        const currentFires: {x: number, y: number}[] = [];
+
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                if (this.cityData.getTile(x, y) === TILE_TYPES.FIRE) {
+                    // Check if fire is within coverage
+                    let covered = false;
+                    for(const st of fireStations) {
+                        const dist = Math.sqrt(Math.pow(st.x - x, 2) + Math.pow(st.y - y, 2));
+                        if (dist <= fireRadius) {
+                            covered = true;
+                            break;
+                        }
+                    }
+
+                    if (covered) {
+                        // Fire station puts it out immediately
+                        this.cityData.setTile(x, y, TILE_TYPES.DIRT, true);
+                    } else {
+                        // Fire burns
+                        if (Math.random() < 0.2) {
+                            // Burns out
+                            this.cityData.setTile(x, y, TILE_TYPES.DIRT, true);
+                        } else {
+                            currentFires.push({x, y}); // Will attempt to spread
+                        }
+                    }
+                }
+            }
+        }
+
+        // Spread fires
+        for (const f of currentFires) {
+            const neighbors = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
+            for(const n of neighbors) {
+                const nx = f.x + n.dx;
+                const ny = f.y + n.dy;
+                if (this.cityData.isValid(nx, ny)) {
+                    if (this.isFlammable(this.cityData.getTile(nx, ny))) {
+                        if (Math.random() < 0.1) { // 10% chance to spread per tick
+                            this.cityData.setTile(nx, ny, TILE_TYPES.FIRE, true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private isFlammable(type: number): boolean {
+        if (type === TILE_TYPES.WATER || type === TILE_TYPES.DIRT || type === TILE_TYPES.GRASS ||
+            type === TILE_TYPES.FIRE || type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD ||
+            type === TILE_TYPES.RAIL_BASE || type === TILE_TYPES.BRIDGE_RAIL || type === TILE_TYPES.POWER_LINE_BASE) {
+            return false;
+        }
+        return true; // Trees, Parks, Zones, Plants, Stations are flammable
+    }
+
     private calculateCityServices() {
         const policeRadius = 15;
-        // Fire stations don't reduce crime, but they would prevent fires (omitted for MVP unless we add disasters)
 
         // Find police stations
         const stations: {x: number, y: number}[] = [];
@@ -344,7 +454,7 @@ export class Simulation {
             const ny = startY + n.dy;
             if (this.cityData.isValid(nx, ny)) {
                 const type = this.cityData.getTile(nx, ny);
-                if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE) {
+                if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE || type === TILE_TYPES.BRIDGE_ROAD || type === TILE_TYPES.BRIDGE_RAIL) {
                     queue.push({x: nx, y: ny, dist: 0, path: [{x: nx, y: ny}]});
                     visited.add(`${nx},${ny}`);
                 }
@@ -370,7 +480,8 @@ export class Simulation {
                         destinationFound = true;
                         // Apply traffic to path ONLY on roads
                         for (const step of current.path) {
-                            if (this.cityData.getTile(step.x, step.y) === TILE_TYPES.ROAD_BASE) {
+                            const stepType = this.cityData.getTile(step.x, step.y);
+                            if (stepType === TILE_TYPES.ROAD_BASE || stepType === TILE_TYPES.BRIDGE_ROAD) {
                                 this.cityData.trafficGrid[step.y][step.x] += 5;
                                 // High traffic generates pollution
                                 if (this.cityData.trafficGrid[step.y][step.x] > 20) {
@@ -393,7 +504,7 @@ export class Simulation {
 
                 if (this.cityData.isValid(nx, ny) && !visited.has(key)) {
                     const type = this.cityData.getTile(nx, ny);
-                    if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE) {
+                    if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE || type === TILE_TYPES.BRIDGE_ROAD || type === TILE_TYPES.BRIDGE_RAIL) {
                         visited.add(key);
                         queue.push({
                             x: nx, y: ny,
@@ -442,7 +553,7 @@ export class Simulation {
         window.dispatchEvent(e);
     }
 
-    private updateRCI(r: number, c: number, i: number) {
+    private updateRCI(r: number, c: number, i: number, hasAirport: boolean, hasSeaport: boolean) {
         // Classic SimCity heuristic: Ratio of R:C:I should be roughly 3:1:1
         // If R is high but jobs (C/I) are low, demand for C/I goes up, R goes down.
         const total = r + c + i;
@@ -469,6 +580,11 @@ export class Simulation {
         this.cityData.demandC = this.clamp(((targetC - currentRatioC) * 2) + taxModifier, -1, 1);
         this.cityData.demandI = this.clamp(((targetI - currentRatioI) * 2) + taxModifier, -1, 1);
         
+        // Without an airport, commercial demand is artificially capped
+        // Without a seaport, industrial demand is artificially capped
+        if (!hasAirport) this.cityData.demandC = Math.min(this.cityData.demandC, 0.5);
+        if (!hasSeaport) this.cityData.demandI = Math.min(this.cityData.demandI, 0.5);
+
         // Small baseline demand so city doesn't totally stall
         if (this.cityData.demandR < 0.1 && Math.random() < 0.3) this.cityData.demandR += 0.2;
     }
@@ -527,7 +643,7 @@ export class Simulation {
 
         for(const n of neighbors) {
             const type = this.cityData.getTile(x + n.dx, y + n.dy);
-            if(type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE) {
+            if(type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE || type === TILE_TYPES.BRIDGE_ROAD || type === TILE_TYPES.BRIDGE_RAIL) {
                 return true;
             }
         }
