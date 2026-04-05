@@ -143,6 +143,15 @@ export class CityMap extends Phaser.Scene {
 
         const currentTool = uiScene.activeTool;
         
+        // Check funds (Importing TOOL_COSTS inline here for safety, it's exported from CityData)
+        const cost = this.getToolCost(currentTool);
+        if (this.cityData.funds < cost) {
+            // Flash funds UI or just return
+            return;
+        }
+
+        let placed = false;
+
         if (currentTool === TILE_TYPES.GRASS) {
             // Bulldozer
             const targetType = this.cityData.getTile(x, y);
@@ -168,10 +177,12 @@ export class CityMap extends Phaser.Scene {
                         this.cityData.setTile(originX + cx, originY + cy, TILE_TYPES.GRASS, true);
                     }
                 }
+                placed = true;
             } else {
                 // Standard 1x1 Bulldozer
                 if (targetType !== TILE_TYPES.GRASS) {
                      this.cityData.setTile(x, y, TILE_TYPES.GRASS, true);
+                     placed = true;
                 }
             }
         } else if (this.is3x3Mode) {
@@ -201,6 +212,7 @@ export class CityMap extends Phaser.Scene {
                         this.cityData.updateTileAndNeighbors(x + cx, y + cy);
                     }
                 }
+                placed = true;
             }
         } else {
             // Place 1x1 Road or Power
@@ -209,8 +221,26 @@ export class CityMap extends Phaser.Scene {
             if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT) {
                 if (targetType !== currentTool) {
                     this.cityData.setTile(x, y, currentTool, true);
+                    placed = true;
                 }
             }
+        }
+
+        if (placed) {
+            this.cityData.funds -= cost;
+        }
+    }
+
+    private getToolCost(tool: number): number {
+        switch(tool) {
+            case TILE_TYPES.GRASS: return 1;
+            case TILE_TYPES.ROAD_BASE: return 10;
+            case TILE_TYPES.POWER_LINE_BASE: return 5;
+            case TILE_TYPES.RES_EMPTY: return 100;
+            case TILE_TYPES.COM_EMPTY: return 100;
+            case TILE_TYPES.IND_EMPTY: return 100;
+            case TILE_TYPES.POWER_PLANT: return 3000;
+            default: return 0;
         }
     }
 

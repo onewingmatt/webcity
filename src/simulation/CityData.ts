@@ -12,6 +12,16 @@ export const TILE_TYPES = {
     POWER_PLANT: 99
 };
 
+export const TOOL_COSTS = {
+    [TILE_TYPES.GRASS]: 1, // Bulldoze cost
+    [TILE_TYPES.ROAD_BASE]: 10,
+    [TILE_TYPES.POWER_LINE_BASE]: 5,
+    [TILE_TYPES.RES_EMPTY]: 100,
+    [TILE_TYPES.COM_EMPTY]: 100,
+    [TILE_TYPES.IND_EMPTY]: 100,
+    [TILE_TYPES.POWER_PLANT]: 3000
+};
+
 export class CityData {
     public width: number;
     public height: number;
@@ -21,6 +31,17 @@ export class CityData {
     public frameGrid: number[][];
     // Which tiles have power
     public powerGrid: boolean[][];
+    
+    // Economy and Stats
+    public funds: number = 20000;
+    public population: number = 0;
+    public dateMonth: number = 1;
+    public dateYear: number = 1900;
+    
+    // RCI Demand (-1.0 to 1.0)
+    public demandR: number = 0.5;
+    public demandC: number = 0.5;
+    public demandI: number = 0.5;
 
     constructor(width: number, height: number) {
         this.width = width;

@@ -1,13 +1,26 @@
 import Phaser from 'phaser';
 
 export class MainUI extends Phaser.Scene {
-    public activeTool: number = 1; // Default to Road
+    public activeTool: number = 16; // Default to Road (16)
+    private fundsText!: Phaser.GameObjects.Text;
+    private dateText!: Phaser.GameObjects.Text;
+    private popText!: Phaser.GameObjects.Text;
+    
+    private rciBars!: { r: Phaser.GameObjects.Graphics, c: Phaser.GameObjects.Graphics, i: Phaser.GameObjects.Graphics };
 
     constructor() {
         super({ key: 'MainUI', active: false });
     }
 
     create() {
+        // Draw Top HUD background
+        const hudHeight = 32;
+        const hudBg = this.add.graphics();
+        hudBg.fillStyle(0x000080, 1);
+        hudBg.fillRect(0, 0, this.cameras.main.width, hudHeight);
+        hudBg.lineStyle(4, 0xffffff, 1);
+        hudBg.strokeRect(0, 0, this.cameras.main.width, hudHeight);
+
         // Draw Sidebar background (SNES blue border/menu background style)
         const sidebarWidth = 64;
         const bg = this.add.graphics();
@@ -26,7 +39,17 @@ export class MainUI extends Phaser.Scene {
             { id: 99, frame: 6, key: '6', is3x3: true }, // Power Plant
         ];
 
-        let startY = 10;
+        let startY = hudHeight + 10;
+
+        // Setup HUD Text
+        const textStyle = { fontSize: '16px', color: '#ffffff', fontFamily: 'monospace' };
+        this.fundsText = this.add.text(80, 8, 'Funds: $20000', textStyle);
+        this.dateText = this.add.text(300, 8, 'Jan 1900', textStyle);
+        this.popText = this.add.text(500, 8, 'Pop: 0', textStyle);
+        
+        // Setup RCI Meter
+        this.setupRCIMeter();
+        
         const toolIcons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[] = [];
 
         tools.forEach((tool, index) => {
@@ -48,7 +71,7 @@ export class MainUI extends Phaser.Scene {
         });
 
         // Set initial active state
-        this.setActiveTool(1, toolIcons);
+        this.setActiveTool(16, toolIcons);
 
         // Keyboard shortcuts
         this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
@@ -80,6 +103,67 @@ export class MainUI extends Phaser.Scene {
         cityScene.events.on('prevTool', () => {
             this.setActiveTool(getPrevToolId(), toolIcons);
         });
+    }
+
+    setupRCIMeter() {
+        const meterY = this.cameras.main.height - 120;
+        const meterX = 4;
+        
+        // Background for RCI
+        const bg = this.add.graphics();
+        bg.fillStyle(0x000000, 1);
+        bg.fillRect(meterX, meterY, 56, 100);
+        bg.lineStyle(2, 0xffffff, 1);
+        bg.strokeRect(meterX, meterY, 56, 100);
+        
+        // Zero line
+        bg.lineStyle(1, 0xffffff, 0.5);
+        bg.beginPath();
+        bg.moveTo(meterX + 2, meterY + 50);
+        bg.lineTo(meterX + 54, meterY + 50);
+        bg.stroke();
+
+        this.add.text(meterX + 8, meterY + 104, 'R C I', { fontSize: '14px', color: '#fff', fontFamily: 'monospace' });
+        
+        this.rciBars = {
+            r: this.add.graphics(),
+            c: this.add.graphics(),
+            i: this.add.graphics()
+        };
+    }
+
+    update() {
+        const cityScene = this.scene.get('CityMap') as any;
+        if (cityScene && cityScene.cityData) {
+            const data = cityScene.cityData;
+            this.fundsText.setText(`Funds: $${data.funds}`);
+            this.popText.setText(`Pop: ${data.population}`);
+            
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const m = data.dateMonth - 1;
+            this.dateText.setText(`${months[m]} ${data.dateYear}`);
+            
+            // Update RCI Meter (-1 to 1 mapped to -45 to 45 pixels)
+            const meterY = this.cameras.main.height - 120;
+            const meterX = 4;
+            const zeroY = meterY + 50;
+            const maxHeight = 45;
+
+            const drawBar = (g: Phaser.GameObjects.Graphics, demand: number, color: number, offsetX: number) => {
+                g.clear();
+                g.fillStyle(color, 1);
+                const h = Math.abs(demand) * maxHeight;
+                if (demand >= 0) {
+                    g.fillRect(meterX + offsetX, zeroY - h, 10, h);
+                } else {
+                    g.fillRect(meterX + offsetX, zeroY, 10, h);
+                }
+            };
+
+            drawBar(this.rciBars.r, data.demandR, 0x4CAF50, 10);
+            drawBar(this.rciBars.c, data.demandC, 0x2196F3, 24);
+            drawBar(this.rciBars.i, data.demandI, 0xFFEB3B, 38);
+        }
     }
 
     setActiveTool(toolId: number, icons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[]) {
