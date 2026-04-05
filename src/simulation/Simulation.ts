@@ -72,9 +72,11 @@ export class Simulation {
 
         // BFS flood fill power
         const neighbors = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
+        let head = 0;
         
-        while(queue.length > 0) {
-            const current = queue.shift()!;
+        // Use a head index instead of shift() which is O(N) in JS arrays and causes massive lag
+        while(head < queue.length) {
+            const current = queue[head++];
             
             for(const n of neighbors) {
                 const nx = current.x + n.dx;

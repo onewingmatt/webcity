@@ -204,8 +204,12 @@ export class CityMap extends Phaser.Scene {
             }
         } else {
             // Place 1x1 Road or Power
-            if (this.cityData.getTile(x, y) !== currentTool) {
-                this.cityData.setTile(x, y, currentTool, true);
+            const targetType = this.cityData.getTile(x, y);
+            // Only allow placing roads/power lines on grass or dirt
+            if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT) {
+                if (targetType !== currentTool) {
+                    this.cityData.setTile(x, y, currentTool, true);
+                }
             }
         }
     }
@@ -216,24 +220,22 @@ export class CityMap extends Phaser.Scene {
         for(let y=0; y<this.mapHeight; y++) {
             for(let x=0; x<this.mapWidth; x++) {
                 const frame = this.cityData.getFrame(x, y);
-                const currentTile = this.layer.getTileAt(x, y);
+                let tile = this.layer.getTileAt(x, y);
+                
+                if(tile && tile.index !== frame) {
+                    tile = this.layer.putTileAt(frame, x, y);
+                }
                 
                 // Visual indicator for lack of power: darken unpowered zones
                 const hasPower = this.cityData.powerGrid[y][x];
                 const type = this.cityData.getTile(x, y);
                 const needsPower = type >= TILE_TYPES.RES_EMPTY;
-                
-                if(currentTile && currentTile.index !== frame) {
-                    this.layer.putTileAt(frame, x, y);
-                }
-                
-                // Adjust tint
-                const newTile = this.layer.getTileAt(x, y);
-                if (newTile) {
+
+                if (tile) {
                     if (needsPower && !hasPower) {
-                        newTile.tint = 0x888888; // Darken if unpowered
+                        tile.tint = 0x888888; // Darken if unpowered
                     } else {
-                        newTile.tint = 0xffffff;
+                        tile.tint = 0xffffff;
                     }
                 }
             }
