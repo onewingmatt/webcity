@@ -17,14 +17,16 @@ export class MainUI extends Phaser.Scene {
         bg.strokeRect(0, 0, sidebarWidth, this.cameras.main.height);
 
         const tools = [
-            { id: 0, frame: 0, key: '0' },
-            { id: 1, frame: 1, key: '1' },
-            { id: 2, frame: 2, key: '2' },
-            { id: 3, frame: 3, key: '3' },
-            { id: 4, frame: 4, key: '4' }
+            { id: 0, frame: 0, key: '0', is3x3: false }, // Bulldozer
+            { id: 16, frame: 1, key: '1', is3x3: false }, // Road
+            { id: 32, frame: 2, key: '2', is3x3: false }, // Power Line
+            { id: 48, frame: 3, key: '3', is3x3: true }, // Res
+            { id: 54, frame: 4, key: '4', is3x3: true }, // Com
+            { id: 60, frame: 5, key: '5', is3x3: true }, // Ind
+            { id: 99, frame: 6, key: '6', is3x3: true }, // Power Plant
         ];
 
-        let startY = 40;
+        let startY = 10;
         const toolIcons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[] = [];
 
         tools.forEach((tool, index) => {
@@ -51,29 +53,48 @@ export class MainUI extends Phaser.Scene {
         // Keyboard shortcuts
         this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
             const key = parseInt(event.key);
-            if (key >= 0 && key <= 4) {
-                this.setActiveTool(key, toolIcons);
+            if (key >= 0 && key <= 6) {
+                const map = [0, 16, 32, 48, 54, 60, 99];
+                this.setActiveTool(map[key], toolIcons);
             }
         });
 
         // Controller bindings
         const cityScene = this.scene.get('CityMap');
+        
+        const getNextToolId = () => {
+             const idx = tools.findIndex(t => t.id === this.activeTool);
+             const nextIdx = (idx + 1) % tools.length;
+             return tools[nextIdx].id;
+        }
+        
+        const getPrevToolId = () => {
+             const idx = tools.findIndex(t => t.id === this.activeTool);
+             const prevIdx = (idx - 1 + tools.length) % tools.length;
+             return tools[prevIdx].id;
+        }
+
         cityScene.events.on('nextTool', () => {
-            let nextId = this.activeTool + 1;
-            if (nextId > 4) nextId = 0;
-            this.setActiveTool(nextId, toolIcons);
+            this.setActiveTool(getNextToolId(), toolIcons);
         });
         cityScene.events.on('prevTool', () => {
-            let prevId = this.activeTool - 1;
-            if (prevId < 0) prevId = 4;
-            this.setActiveTool(prevId, toolIcons);
+            this.setActiveTool(getPrevToolId(), toolIcons);
         });
     }
 
     setActiveTool(toolId: number, icons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[]) {
         this.activeTool = toolId;
+        
+        // Let CityMap know if it's a 3x3 tool
+        const toolData = [0, 16, 32, 48, 54, 60, 99].find(id => id === toolId);
+        const is3x3 = toolData !== undefined && toolData >= 48;
+        this.scene.get('CityMap').events.emit('toolChanged', is3x3);
+
+        const tools = [0, 16, 32, 48, 54, 60, 99];
+        const activeIdx = tools.indexOf(toolId);
+        
         icons.forEach((item, i) => {
-            if (i === toolId) {
+            if (i === activeIdx) {
                 item.border.setVisible(true);
             } else {
                 item.border.setVisible(false);

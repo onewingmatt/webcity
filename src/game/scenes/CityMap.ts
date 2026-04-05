@@ -4,10 +4,13 @@ import { MainUI } from './MainUI';
 import { Simulation } from '../../simulation/Simulation';
 import { InputManager } from '../../core/InputManager';
 
+import { TILE_TYPES } from '../../simulation/CityData';
+
 export class CityMap extends Phaser.Scene {
     private mapWidth = 50;
     private mapHeight = 50;
     private tileSize = 16;
+    private is3x3Mode = false;
     
     private cityData!: CityData;
     private simulation!: Simulation;
@@ -45,8 +48,12 @@ export class CityMap extends Phaser.Scene {
 
         // Hover Marker
         this.marker = this.add.graphics();
-        this.marker.lineStyle(2, 0xffffff, 1);
-        this.marker.strokeRect(0, 0, this.tileSize, this.tileSize);
+        this.updateMarkerSize();
+        
+        this.events.on('toolChanged', (is3x3: boolean) => {
+            this.is3x3Mode = is3x3;
+            this.updateMarkerSize();
+        });
 
         // Handle camera panning
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
@@ -66,6 +73,13 @@ export class CityMap extends Phaser.Scene {
             callbackScope: this,
             loop: true
         });
+    }
+
+    updateMarkerSize() {
+        this.marker.clear();
+        this.marker.lineStyle(2, 0xffffff, 1);
+        const size = this.is3x3Mode ? this.tileSize * 3 : this.tileSize;
+        this.marker.strokeRect(0, 0, size, size);
     }
 
     update(time: number) {
@@ -99,7 +113,12 @@ export class CityMap extends Phaser.Scene {
         if (pointerTileX >= 0 && pointerTileX < this.mapWidth && 
             pointerTileY >= 0 && pointerTileY < this.mapHeight) {
             
-            // Snap marker to grid
+            // Snap marker to grid. If 3x3, align top-left
+            if (this.is3x3Mode) {
+                // Ensure we don't go off edge
+                pointerTileX = Math.min(pointerTileX, this.mapWidth - 3);
+                pointerTileY = Math.min(pointerTileY, this.mapHeight - 3);
+            }
             this.marker.setPosition(pointerTileX * this.tileSize, pointerTileY * this.tileSize);
             
             // Camera follow cursor if offscreen (for gamepad)
@@ -124,22 +143,98 @@ export class CityMap extends Phaser.Scene {
 
         const currentTool = uiScene.activeTool;
         
-        // Prevent placing if it's already the same type to save performance/avoid loops
-        if (this.cityData.getTile(x, y) !== currentTool) {
-            this.cityData.setTile(x, y, currentTool);
-            this.layer.putTileAt(currentTool, x, y);
+        if (currentTool === TILE_TYPES.GRASS) {
+            // Bulldozer
+            const targetType = this.cityData.getTile(x, y);
+            if (targetType >= TILE_TYPES.RES_EMPTY) {
+                // Find top-left of the 3x3
+                let originX = x;
+                let originY = y;
+                // Since our 3x3 frames are laid out in a grid, we need to find the root.
+                // An easier way is just to search the local 3x3 area for the top-left tile of this zone.
+                // For simplicity in this MVP, we assume clicking ANY tile in a 3x3 clears the block.
+                // We'll calculate the top-left based on the frame offset:
+                const frame = this.cityData.getFrame(x, y);
+                const baseType = targetType;
+                const offset = frame - baseType;
+                const dy = Math.floor(offset / 16);
+                const dx = offset % 16; // Note: our tileset is 16 tiles wide
+                
+                originX = x - dx;
+                originY = y - dy;
+
+                for (let cy = 0; cy < 3; cy++) {
+                    for (let cx = 0; cx < 3; cx++) {
+                        this.cityData.setTile(originX + cx, originY + cy, TILE_TYPES.GRASS, true);
+                    }
+                }
+            } else {
+                // Standard 1x1 Bulldozer
+                if (targetType !== TILE_TYPES.GRASS) {
+                     this.cityData.setTile(x, y, TILE_TYPES.GRASS, true);
+                }
+            }
+        } else if (this.is3x3Mode) {
+            // Place 3x3 Zone
+            // 1. Collision check
+            let canPlace = true;
+            for (let cy = 0; cy < 3; cy++) {
+                for (let cx = 0; cx < 3; cx++) {
+                    if (this.cityData.getTile(x + cx, y + cy) !== TILE_TYPES.GRASS) {
+                        canPlace = false;
+                    }
+                }
+            }
+            
+            if (canPlace) {
+                for (let cy = 0; cy < 3; cy++) {
+                    for (let cx = 0; cx < 3; cx++) {
+                        // The frame index in the atlas is Base + (cy * 16) + cx
+                        const frameId = currentTool + (cy * 16) + cx;
+                        this.cityData.setTile(x + cx, y + cy, currentTool, false);
+                        this.cityData.frameGrid[y + cy][x + cx] = frameId;
+                    }
+                }
+                // Update edges for any adjacent roads/power lines
+                for (let cy = -1; cy <= 3; cy++) {
+                    for (let cx = -1; cx <= 3; cx++) {
+                        this.cityData.updateTileAndNeighbors(x + cx, y + cy);
+                    }
+                }
+            }
+        } else {
+            // Place 1x1 Road or Power
+            if (this.cityData.getTile(x, y) !== currentTool) {
+                this.cityData.setTile(x, y, currentTool, true);
+            }
         }
     }
 
     tickSimulation() {
         this.simulation.tick();
-        // Sync map with city data
+        // Sync map with city data frames
         for(let y=0; y<this.mapHeight; y++) {
             for(let x=0; x<this.mapWidth; x++) {
-                const type = this.cityData.getTile(x, y);
+                const frame = this.cityData.getFrame(x, y);
                 const currentTile = this.layer.getTileAt(x, y);
-                if(currentTile && currentTile.index !== type) {
-                    this.layer.putTileAt(type, x, y);
+                
+                // Visual indicator for lack of power: darken unpowered zones
+                const hasPower = this.cityData.powerGrid[y][x];
+                const type = this.cityData.getTile(x, y);
+                const needsPower = type >= TILE_TYPES.RES_EMPTY;
+                
+                if(currentTile && currentTile.index !== frame) {
+                    this.layer.putTileAt(frame, x, y);
+                }
+                
+                // Adjust tint
+                const newTile = this.layer.getTileAt(x, y);
+                if (newTile) {
+                    if (needsPower && !hasPower) {
+                        newTile.tint = 0x888888; // Darken if unpowered
+                    } else {
+                        newTile.tint = 0xffffff;
+                    }
                 }
             }
         }
