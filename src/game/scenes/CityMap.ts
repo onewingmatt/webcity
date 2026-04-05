@@ -164,7 +164,9 @@ export class CityMap extends Phaser.Scene {
         if (currentTool === TILE_TYPES.GRASS) {
             // Bulldozer
             const targetType = this.cityData.getTile(x, y);
-            if (targetType >= TILE_TYPES.RES_EMPTY) {
+            const isTarget3x3 = targetType >= TILE_TYPES.RES_EMPTY && targetType < TILE_TYPES.RAIL_BASE;
+
+            if (isTarget3x3) {
                 // Find top-left of the 3x3
                 let originX = x;
                 let originY = y;
@@ -220,10 +222,11 @@ export class CityMap extends Phaser.Scene {
                 placed = true;
             }
         } else {
-            // Place 1x1 Road or Power
+            // Place 1x1 Road, Rail, Power, or Park
             const targetType = this.cityData.getTile(x, y);
-            // Only allow placing roads/power lines on grass or dirt
-            if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT) {
+            // Allow placing on grass, dirt, or tree (which gets bulldozed implicitly)
+            // Cannot place on water! (unless bridging, skipping for MVP)
+            if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
                 if (targetType !== currentTool) {
                     this.cityData.setTile(x, y, currentTool, true);
                     placed = true;
@@ -239,7 +242,9 @@ export class CityMap extends Phaser.Scene {
     private getToolCost(tool: number): number {
         switch(tool) {
             case TILE_TYPES.GRASS: return 1;
+            case TILE_TYPES.PARK: return 10;
             case TILE_TYPES.ROAD_BASE: return 10;
+            case TILE_TYPES.RAIL_BASE: return 20;
             case TILE_TYPES.POWER_LINE_BASE: return 5;
             case TILE_TYPES.RES_EMPTY: return 100;
             case TILE_TYPES.COM_EMPTY: return 100;
@@ -247,6 +252,7 @@ export class CityMap extends Phaser.Scene {
             case TILE_TYPES.POWER_PLANT: return 3000;
             case TILE_TYPES.POLICE_STATION: return 500;
             case TILE_TYPES.FIRE_STATION: return 500;
+            case TILE_TYPES.TRAIN_DEPOT: return 500;
             default: return 0;
         }
     }
@@ -280,7 +286,8 @@ export class CityMap extends Phaser.Scene {
                     } else {
                         // Normal play mode
                         const hasPower = this.cityData.powerGrid[y][x];
-                        const needsPower = type >= TILE_TYPES.RES_EMPTY;
+                        const is3x3 = type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE;
+                        const needsPower = is3x3;
 
                         // Check traffic on roads
                         if (type === TILE_TYPES.ROAD_BASE) {
@@ -292,6 +299,12 @@ export class CityMap extends Phaser.Scene {
                             } else {
                                 tile.tint = 0xffffff;
                             }
+                        } else if (type === TILE_TYPES.WATER) {
+                            tile.tint = 0x88ccff; // Slight blue tint for water if the tileset is greyscale
+                        } else if (type === TILE_TYPES.TREE) {
+                            tile.tint = 0x228b22; // Forest green tint
+                        } else if (type === TILE_TYPES.PARK) {
+                            tile.tint = 0x32cd32; // Lime green tint
                         } else if (needsPower && !hasPower) {
                             tile.tint = 0x888888; // Darken if unpowered
                         } else {

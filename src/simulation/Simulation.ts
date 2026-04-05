@@ -25,6 +25,9 @@ export class Simulation {
         // Calculate service coverage (Police/Fire auras)
         this.calculateCityServices();
 
+        // Calculate terrain/park land value modifiers
+        this.calculateTerrainAuras();
+
         let popCount = 0;
         let builtR = 0;
         let builtC = 0;
@@ -50,9 +53,14 @@ export class Simulation {
 
                 // Calculate local land value (simplified)
                 // High pollution and crime drastically reduces land value.
+                // Natural features (from the aura calculation) will boost it.
                 const pollution = this.cityData.pollutionGrid[y][x];
                 const crime = this.cityData.crimeGrid[y][x];
-                let landValue = 50 - pollution - crime;
+
+                // Base land value depends on distance from center (simplified "downtown" effect)
+                const distToCenter = Math.abs(x - this.cityData.width/2) + Math.abs(y - this.cityData.height/2);
+                let landValue = 60 - (distToCenter * 0.5) - pollution - crime + this.cityData.landValueGrid[y][x]; // Add aura boosts
+
                 this.cityData.landValueGrid[y][x] = landValue;
 
                 // Traffic and Pollution generation
@@ -99,9 +107,9 @@ export class Simulation {
 
                         // Check environment (needs power, road access, and acceptable land value)
                         const hasPower = this.cityData.powerGrid[y][x];
-                        const hasRoad = this.isAdjacentToRoad(x, y) || this.isAdjacentToRoad(x+1, y) || this.isAdjacentToRoad(x+2, y) ||
-                                        this.isAdjacentToRoad(x, y+1) || this.isAdjacentToRoad(x+2, y+1) ||
-                                        this.isAdjacentToRoad(x, y+2) || this.isAdjacentToRoad(x+1, y+2) || this.isAdjacentToRoad(x+2, y+2);
+                        const hasRoad = this.isAdjacentToTransit(x, y) || this.isAdjacentToTransit(x+1, y) || this.isAdjacentToTransit(x+2, y) ||
+                                        this.isAdjacentToTransit(x, y+1) || this.isAdjacentToTransit(x+2, y+1) ||
+                                        this.isAdjacentToTransit(x, y+2) || this.isAdjacentToTransit(x+1, y+2) || this.isAdjacentToTransit(x+2, y+2);
 
                         // Res/Com need decent land value to grow/maintain high density
                         const canGrowEnv = isIndustry || landValue > 10;
@@ -219,10 +227,43 @@ export class Simulation {
                     this.cityData.trafficGrid[y][x] = Math.max(0, this.cityData.trafficGrid[y][x] - 2);
                 }
                 if (this.cityData.pollutionGrid[y][x] > 0) {
-                    this.cityData.pollutionGrid[y][x] = Math.max(0, this.cityData.pollutionGrid[y][x] - 1);
+                    let decay = 1;
+                    // Parks and trees naturally scrub a little extra pollution
+                    const type = this.cityData.getTile(x, y);
+                    if (type === TILE_TYPES.PARK || type === TILE_TYPES.TREE) decay = 3;
+
+                    this.cityData.pollutionGrid[y][x] = Math.max(0, this.cityData.pollutionGrid[y][x] - decay);
                 }
                 if (this.cityData.crimeGrid[y][x] > 0) {
                      this.cityData.crimeGrid[y][x] = Math.max(0, this.cityData.crimeGrid[y][x] - 1);
+                }
+            }
+        }
+    }
+
+    private calculateTerrainAuras() {
+        // Reset base land value modifiers
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                this.cityData.landValueGrid[y][x] = 0;
+            }
+        }
+
+        const radius = 3;
+        for(let y=0; y<this.cityData.height; y++) {
+            for(let x=0; x<this.cityData.width; x++) {
+                const type = this.cityData.getTile(x, y);
+                if (type === TILE_TYPES.WATER || type === TILE_TYPES.PARK || type === TILE_TYPES.TREE) {
+                    const boost = type === TILE_TYPES.WATER ? 5 : 3;
+                    for (let dy = -radius; dy <= radius; dy++) {
+                        for (let dx = -radius; dx <= radius; dx++) {
+                            const nx = x + dx;
+                            const ny = y + dy;
+                            if (this.cityData.isValid(nx, ny)) {
+                                this.cityData.landValueGrid[ny][nx] += boost;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -291,19 +332,22 @@ export class Simulation {
     }
 
     private calculateCommute(startX: number, startY: number) {
-        // BFS to find nearest Commercial or Industrial zone along roads
-        const MAX_DISTANCE = 30; // Limit search for performance
+        // BFS to find nearest Commercial or Industrial zone along roads/rails
+        const MAX_DISTANCE = 40; // Limit search for performance (slightly higher for rails)
         const queue: {x: number, y: number, dist: number, path: {x:number, y:number}[]}[] = [];
         const visited = new Set<string>();
 
-        // Find an adjacent road to start the commute
+        // Find an adjacent transit tile to start the commute
         const neighbors = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
         for(const n of neighbors) {
             const nx = startX + n.dx;
             const ny = startY + n.dy;
-            if (this.cityData.isValid(nx, ny) && this.cityData.getTile(nx, ny) === TILE_TYPES.ROAD_BASE) {
-                queue.push({x: nx, y: ny, dist: 0, path: [{x: nx, y: ny}]});
-                visited.add(`${nx},${ny}`);
+            if (this.cityData.isValid(nx, ny)) {
+                const type = this.cityData.getTile(nx, ny);
+                if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE) {
+                    queue.push({x: nx, y: ny, dist: 0, path: [{x: nx, y: ny}]});
+                    visited.add(`${nx},${ny}`);
+                }
             }
         }
 
@@ -324,12 +368,14 @@ export class Simulation {
                     if ((type >= TILE_TYPES.COM_EMPTY && type <= TILE_TYPES.COM_HIGH && type !== TILE_TYPES.COM_EMPTY) ||
                         (type >= TILE_TYPES.IND_EMPTY && type <= TILE_TYPES.IND_HIGH && type !== TILE_TYPES.IND_EMPTY)) {
                         destinationFound = true;
-                        // Apply traffic to path
+                        // Apply traffic to path ONLY on roads
                         for (const step of current.path) {
-                            this.cityData.trafficGrid[step.y][step.x] += 5;
-                            // High traffic generates pollution
-                            if (this.cityData.trafficGrid[step.y][step.x] > 20) {
-                                this.cityData.pollutionGrid[step.y][step.x] += 2;
+                            if (this.cityData.getTile(step.x, step.y) === TILE_TYPES.ROAD_BASE) {
+                                this.cityData.trafficGrid[step.y][step.x] += 5;
+                                // High traffic generates pollution
+                                if (this.cityData.trafficGrid[step.y][step.x] > 20) {
+                                    this.cityData.pollutionGrid[step.y][step.x] += 2;
+                                }
                             }
                         }
                         break;
@@ -339,14 +385,15 @@ export class Simulation {
 
             if (destinationFound) break;
 
-            // Continue along roads
+            // Continue along transit
             for(const n of neighbors) {
                 const nx = current.x + n.dx;
                 const ny = current.y + n.dy;
                 const key = `${nx},${ny}`;
 
                 if (this.cityData.isValid(nx, ny) && !visited.has(key)) {
-                    if (this.cityData.getTile(nx, ny) === TILE_TYPES.ROAD_BASE) {
+                    const type = this.cityData.getTile(nx, ny);
+                    if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE) {
                         visited.add(key);
                         queue.push({
                             x: nx, y: ny,
@@ -474,12 +521,13 @@ export class Simulation {
         }
     }
 
-    private isAdjacentToRoad(x: number, y: number): boolean {
-        // Check 4 directions for road base
+    private isAdjacentToTransit(x: number, y: number): boolean {
+        // Check 4 directions for road or rail base
         const neighbors = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
 
         for(const n of neighbors) {
-            if(this.cityData.getTile(x + n.dx, y + n.dy) === TILE_TYPES.ROAD_BASE) {
+            const type = this.cityData.getTile(x + n.dx, y + n.dy);
+            if(type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE) {
                 return true;
             }
         }

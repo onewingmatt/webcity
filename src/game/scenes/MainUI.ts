@@ -36,19 +36,22 @@ export class MainUI extends Phaser.Scene {
         bg.lineStyle(4, 0xffffff, 1); // White border
         bg.strokeRect(0, 0, sidebarWidth, this.cameras.main.height);
 
-        // We now have more tools (Police, Fire).
-        // Note: For MVP we will just map them to keys 7 and 8 and use the Power Plant icon (frame 6) as a placeholder if we don't have new icons.
-        // Actually, we can use frame 3, 4, 5 for colored squares or just generic frames.
+        // Expand tools to include Rail, Park, Train Depot.
+        // We will just map them to keys 0-9, and Q/W for the rest.
+        // Note: For MVP we use existing icons as placeholders for new tools.
         const tools = [
             { id: 0, frame: 0, key: '0', is3x3: false, label: 'Bulldoze' },
             { id: 16, frame: 1, key: '1', is3x3: false, label: 'Road' },
-            { id: 32, frame: 2, key: '2', is3x3: false, label: 'Power Line' },
-            { id: 48, frame: 3, key: '3', is3x3: true, label: 'Residential' },
-            { id: 60, frame: 4, key: '4', is3x3: true, label: 'Commercial' }, // Updated ID based on new tiles
-            { id: 105, frame: 5, key: '5', is3x3: true, label: 'Industrial' }, // Fixed ID (105 is IND_EMPTY)
-            { id: 150, frame: 6, key: '6', is3x3: true, label: 'Power Plant' }, // Updated ID
-            { id: 153, frame: 4, key: '7', is3x3: true, label: 'Police' }, // Using 'C' icon placeholder
-            { id: 156, frame: 5, key: '8', is3x3: true, label: 'Fire' },   // Using 'I' icon placeholder
+            { id: 240, frame: 1, key: '2', is3x3: false, label: 'Rail' },     // Using Road icon placeholder
+            { id: 32, frame: 2, key: '3', is3x3: false, label: 'Power Line' },
+            { id: 4, frame: 0, key: '4', is3x3: false, label: 'Park' },       // Park is 1x1
+            { id: 48, frame: 3, key: '5', is3x3: true, label: 'Residential' },
+            { id: 60, frame: 4, key: '6', is3x3: true, label: 'Commercial' },
+            { id: 105, frame: 5, key: '7', is3x3: true, label: 'Industrial' },
+            { id: 150, frame: 6, key: '8', is3x3: true, label: 'Power Plant' },
+            { id: 192, frame: 6, key: '9', is3x3: true, label: 'Train Depot' }, // Using Power Plant icon placeholder
+            { id: 153, frame: 4, key: 'Q', is3x3: true, label: 'Police' },      // Using 'C' icon placeholder
+            { id: 156, frame: 5, key: 'W', is3x3: true, label: 'Fire' },        // Using 'I' icon placeholder
         ];
 
         let startY = hudHeight + 10;
@@ -69,20 +72,24 @@ export class MainUI extends Phaser.Scene {
         
         const toolIcons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[] = [];
 
+        // We have 12 tools now, so let's adjust spacing or draw them in two columns if needed.
+        // For simplicity, we just pack them tighter in the sidebar.
         tools.forEach((tool, index) => {
             // Draw selection border (hidden initially)
             const border = this.add.graphics();
             border.lineStyle(2, 0xffff00, 1);
-            border.strokeRect(16 - 2, startY + (index * 40) - 2, 32 + 4, 32 + 4);
+            const iconY = startY + (index * 34); // tighter spacing
+            border.strokeRect(16 - 2, iconY - 2, 32 + 4, 32 + 4);
             border.setVisible(false);
 
             // Add UI Icon
-            const icon = this.add.image(16 + 16, startY + (index * 40) + 16, 'ui_icons', tool.frame)
+            const icon = this.add.image(16 + 16, iconY + 16, 'ui_icons', tool.frame)
                 .setInteractive()
+                .setScale(0.8) // Scale down slightly to fit
                 .on('pointerdown', () => this.setActiveTool(tool.id, toolIcons));
             
             // Tooltip text helper
-            this.add.text(50, startY + (index * 40) + 8, tool.key, { fontSize: '14px', color: '#fff' });
+            this.add.text(50, iconY + 8, tool.key, { fontSize: '12px', color: '#fff' });
             
             toolIcons.push({ icon, border });
         });
@@ -92,12 +99,14 @@ export class MainUI extends Phaser.Scene {
 
         // Keyboard shortcuts for tools
         this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
-            const key = parseInt(event.key);
-            if (key >= 0 && key <= 8) {
-                const toolMap = [0, 16, 32, 48, 60, 105, 150, 153, 156];
-                if (key < toolMap.length) {
-                    this.setActiveTool(toolMap[key], toolIcons);
-                }
+            const keyChar = event.key.toUpperCase();
+            const toolMap: Record<string, number> = {
+                '0': 0, '1': 16, '2': 240, '3': 32, '4': 4,
+                '5': 48, '6': 60, '7': 105, '8': 150, '9': 192,
+                'Q': 153, 'W': 156
+            };
+            if (toolMap[keyChar] !== undefined) {
+                this.setActiveTool(toolMap[keyChar], toolIcons);
             }
         });
 
@@ -325,9 +334,10 @@ export class MainUI extends Phaser.Scene {
     setActiveTool(toolId: number, icons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[]) {
         this.activeTool = toolId;
         
-        // Let CityMap know if it's a 3x3 tool (everything from RES_EMPTY 48 and up)
-        const toolMap = [0, 16, 32, 48, 60, 105, 150, 153, 156];
-        const is3x3 = toolId >= 48;
+        // Let CityMap know if it's a 3x3 tool
+        const toolMap = [0, 16, 240, 32, 4, 48, 60, 105, 150, 192, 153, 156];
+        // 240 is RAIL_BASE which is 1x1. Everything else >= 48 is 3x3.
+        const is3x3 = toolId >= 48 && toolId !== 240;
         this.scene.get('CityMap').events.emit('toolChanged', is3x3);
 
         const activeIdx = toolMap.indexOf(toolId);
