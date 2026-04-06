@@ -303,6 +303,12 @@ export class Simulation {
             totalCrime: metrics.totalCrime
         }});
         window.dispatchEvent(e);
+
+        // Dispatch newspaper event at year-end
+        const newspaper = this.generateNewspaperHeadline(metrics);
+        if (newspaper) {
+            window.dispatchEvent(new CustomEvent('newspaperEvent', { detail: newspaper }));
+        }
     }
 
     private getMetrics() {
@@ -685,6 +691,174 @@ export class Simulation {
                 }
             }
         }
+    }
+
+    private generateNewspaperHeadline(metrics: any): { headline: string, body: string } | null {
+        const isFirstYear = this.cityData.dateYear === 1901;
+        const pop = this.cityData.population;
+        const funds = this.cityData.funds;
+        const crime = metrics.totalCrime;
+        const pollution = metrics.totalPollution;
+        const highTraffic = metrics.highTrafficTiles;
+
+        // First year special
+        if (isFirstYear) {
+            return {
+                headline: 'NEW MAYOR TAKES OFFICE',
+                body: 'The city welcomes its new mayor! Citizens are hopeful for a prosperous future under new leadership.'
+            };
+        }
+
+        // Population milestones
+        if (pop >= 50000 && pop < 51000) {
+            return {
+                headline: 'CITY REACHES 50,000 POPULATION!',
+                body: 'Our city has grown into a major metropolis! The citizens celebrate this historic milestone with parades and festivities.'
+            };
+        }
+        if (pop >= 25000 && pop < 25500) {
+            return {
+                headline: 'QUARTER CENTURY POPULATION!',
+                body: 'With 25,000 citizens, our city has officially become a major urban center. Commercial development is booming!'
+            };
+        }
+        if (pop >= 10000 && pop < 10500) {
+            return {
+                headline: 'POPULATION BOOM CONTINUES!',
+                body: 'Our city has surpassed 10,000 residents! The housing market cannot keep up with the incredible demand for new homes.'
+            };
+        }
+        if (pop >= 5000 && pop < 5100) {
+            return {
+                headline: 'TOWN BECOMES A CITY!',
+                body: 'With 5,000 residents, our town has officially become a city. Local businesses are expanding rapidly.'
+            };
+        }
+        if (pop >= 2000 && pop < 2100) {
+            return {
+                headline: 'GROWTH SPURT!',
+                body: 'Our community has grown to 2,000 residents! The rapid expansion is bringing new opportunities and challenges.'
+            };
+        }
+
+        // Crisis headlines (higher priority)
+        if (funds < 1000) {
+            return {
+                headline: 'CITY BUDGET CRISIS!',
+                body: 'City finances are in dire straits! The treasury is nearly empty. Immediate action is needed to avoid bankruptcy!'
+            };
+        }
+        if (funds < 5000) {
+            return {
+                headline: 'BUDGET WORRIES MOUNT',
+                body: 'City officials express concern over dwindling funds. Residents are calling for better fiscal management.'
+            };
+        }
+        if (crime > 5000) {
+            return {
+                headline: 'CRIME WAVE HITS DOWNTOWN!',
+                body: 'Crime rates have reached alarming levels! Citizens are demanding more police protection. Tourism is declining.'
+            };
+        }
+        if (crime > 3000) {
+            return {
+                headline: 'CRIME CONCERNS RISE',
+                body: 'Police report increasing criminal activity. Residents are advised to be cautious after dark.'
+            };
+        }
+        if (pollution > 10000) {
+            return {
+                headline: 'SMOG COVERS THE CITY',
+                body: 'Air quality has reached dangerous levels! Health officials warn of respiratory issues. Environmentalists demand action!'
+            };
+        }
+        if (pollution > 6000) {
+            return {
+                headline: 'POLLUTION PROBLEMS WORSEN',
+                body: 'Industrial expansion has led to increased pollution. Environmental groups call for stricter regulations.'
+            };
+        }
+        if (highTraffic > 100) {
+            return {
+                headline: 'TRAFFIC NIGHTMARE!',
+                body: 'Roads are gridlocked with vehicles! Commuters report hours-long delays. Traffic experts call for better public transit.'
+            };
+        }
+        if (highTraffic > 50) {
+            return {
+                headline: 'TRAFFIC CONGESTION INCREASES',
+                body: 'Traffic congestion has reached concerning levels. City planners are considering infrastructure improvements.'
+            };
+        }
+
+        // Good news headlines
+        if (crime < 500 && pollution < 1000 && pop > 10000) {
+            return {
+                headline: 'MODEL CITY AWARD!',
+                body: 'Our city has been recognized as one of the safest and cleanest in the region! Quality of life ratings are at an all-time high!'
+            };
+        }
+        if (funds > 50000) {
+            return {
+                headline: 'TREASURY OVERFLOWS!',
+                body: 'The city treasury is flush with cash! Residents are discussing how to best use the surplus funds.'
+            };
+        }
+        if (funds > 30000) {
+            return {
+                headline: 'STRONG ECONOMY REPORTED',
+                body: 'Economic indicators show strong growth across all sectors. Business confidence is at an all-time high!'
+            };
+        }
+        if (pop > 100000) {
+            return {
+                headline: 'MEGALOPOLIS STATUS REACHED!',
+                body: 'Our city has exceeded 100,000 residents! We have joined the ranks of the world\'s great metropolises!'
+            };
+        }
+
+        // Random variety headlines
+        const varietyHeadlines = [
+            {
+                headline: 'DEVELOPERS ANNOUNCE NEW PROJECT',
+                body: 'Major construction projects are underway. Developers promise new jobs and housing.'
+            },
+            {
+                headline: 'TOURISTS FLOCK TO CITY',
+                body: 'Our city has become a popular tourist destination! Local businesses report record profits.'
+            },
+            {
+                headline: 'SCHOOL OPENING CELEBRATED',
+                body: 'A new school has opened its doors. Parents and students celebrate the improved education opportunities.'
+            },
+            {
+                headline: 'PARK RENOVATION COMPLETED',
+                body: 'The city\'s beloved park has been renovated. Families enjoy the improved recreational facilities.'
+            },
+            {
+                headline: 'LOCAL BUSINESS EXPANSION',
+                body: 'Several local businesses are expanding operations, creating new jobs and stimulating economic growth.'
+            },
+            {
+                headline: 'CITY CELEBRATES ANNIVERSARY',
+                body: 'Citizens gather to celebrate our city\'s anniversary. The festivities draw visitors from across the region.'
+            },
+            {
+                headline: 'NEW FACTORY OPENS',
+                body: 'A major new factory has opened, bringing hundreds of new jobs. Local officials welcome the economic boost.'
+            },
+            {
+                headline: 'RESIDENTS HAPPY WITH PROGRESS',
+                body: 'Recent polls show high satisfaction with city development. Residents appreciate the improvements.'
+            },
+            {
+                headline: 'PUBLIC TRANSIT EXPANSION PLANNED',
+                body: 'City officials announce plans to expand public transit options to ease traffic congestion.'
+            }
+        ];
+
+        // Return a random variety headline
+        return varietyHeadlines[Math.floor(Math.random() * varietyHeadlines.length)];
     }
 
     private isAdjacentToTransit(x: number, y: number): boolean {
