@@ -137,7 +137,13 @@ export class Simulation {
 
                         // Evaluate Growth
                         if (hasPower && hasRoad && canGrowEnv && hasDemand) {
-                            if (Math.random() < 0.1) { // 10% chance per month to grow if conditions met
+                            // Empty zones grow faster to establish the city, upgrading takes longer
+                            let growthChance = 0.1;
+                            if (type === TILE_TYPES.RES_EMPTY || type === TILE_TYPES.COM_EMPTY || type === TILE_TYPES.IND_EMPTY) {
+                                growthChance = 0.25;
+                            }
+
+                            if (Math.random() < growthChance) {
                                 if (type === TILE_TYPES.RES_EMPTY) nextType = TILE_TYPES.RES_LOW;
                                 else if (type === TILE_TYPES.RES_LOW && landValue > 20) nextType = TILE_TYPES.RES_MED;
                                 else if (type === TILE_TYPES.RES_MED && landValue > 35) nextType = TILE_TYPES.RES_HIGH;
@@ -244,7 +250,7 @@ export class Simulation {
 
     private processYearEndBudget() {
         // Calculate taxes (population * basic revenue rate * taxRate)
-        const revenuePerCitizen = 10;
+        const revenuePerCitizen = 15; // Slightly increased for early game balance
         let taxes = Math.floor(this.cityData.population * revenuePerCitizen * this.cityData.taxRate);
 
         // Add Casino revenue
@@ -260,12 +266,12 @@ export class Simulation {
         let roadCount = 0;
         for(let y=0; y<this.cityData.height; y++) {
             for(let x=0; x<this.cityData.width; x++) {
-                if (this.cityData.getTile(x, y) === TILE_TYPES.ROAD_BASE) {
+                if (this.cityData.getTile(x, y) === TILE_TYPES.ROAD_BASE || this.cityData.getTile(x, y) === TILE_TYPES.BRIDGE_ROAD) {
                     roadCount++;
                 }
             }
         }
-        const upkeep = roadCount * 2; // $2 per road tile per year
+        const upkeep = roadCount * 1; // Reduced to $1 per road tile per year
 
         this.cityData.lastTaxesCollected = taxes;
         this.cityData.lastUpkeepPaid = upkeep;
