@@ -11,10 +11,20 @@
         box-sizing: border-box;
       }
       body {
-        background-color: #000;
+        background-color: #1a1a2e;
         overflow: hidden;
         width: 100vw;
         height: 100vh;
+      }
+      #loading {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-family: Arial, sans-serif;
+        font-size: 24px;
+        text-align: center;
       }
       canvas {
         display: block;
@@ -22,6 +32,7 @@
     </style>
   </head>
   <body>
+    <div id="loading">Loading SimCity...</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
