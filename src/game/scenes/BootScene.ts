@@ -7,13 +7,13 @@ export class BootScene extends Phaser.Scene {
 
     preload() {
         // Load the tileset we generated
-        this.load.spritesheet('tiles', '/webcity/tileset_v2.png', {
+        this.load.spritesheet('tiles', `${import.meta.env.BASE_URL}tileset_v2.png`, {
             frameWidth: 16,
             frameHeight: 16
         });
 
         // Load UI Icons
-        this.load.spritesheet('ui_icons', '/webcity/ui_icons_v2.png', {
+        this.load.spritesheet('ui_icons', `${import.meta.env.BASE_URL}ui_icons_v2.png`, {
             frameWidth: 32,
             frameHeight: 32
         });
