@@ -33,6 +33,14 @@
   </head>
   <body>
     <div id="loading">Loading SimCity...</div>
+    <script>
+      // Simple test to see if JavaScript runs
+      console.log('Inline script running');
+      document.getElementById('loading').textContent = 'JS is running...';
+      setTimeout(function() {
+        document.getElementById('loading').textContent = 'Loading Phaser module...';
+      }, 100);
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
