@@ -107,9 +107,9 @@ export class CityData {
     public lastUpkeepPaid: number = 0;
 
     // RCI Demand (-1.0 to 1.0)
-    public demandR: number = 0.5;
-    public demandC: number = 0.5;
-    public demandI: number = 0.5;
+    public demandR: number = 1.0;
+    public demandC: number = 0.2;
+    public demandI: number = 0.8;
 
     constructor(width: number, height: number) {
         this.width = width;

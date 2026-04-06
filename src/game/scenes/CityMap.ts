@@ -15,6 +15,10 @@ export class CityMap extends Phaser.Scene {
     
     public showPollutionLayer = false;
 
+    public simSpeed: number = 1; // 0: Paused, 1: Slow, 2: Normal, 3: Fast
+    private simTimer!: Phaser.Time.TimerEvent;
+    private readonly SPEED_DELAYS = [0, 2000, 1000, 250]; // ms per tick
+
     private cityData!: CityData;
     private simulation!: Simulation;
     private layer!: Phaser.Tilemaps.TilemapLayer;
@@ -77,12 +81,41 @@ export class CityMap extends Phaser.Scene {
         });
 
         // Setup simulation timer
-        this.time.addEvent({
-            delay: 1000,
+        this.simTimer = this.time.addEvent({
+            delay: this.SPEED_DELAYS[1],
             callback: this.tickSimulation,
             callbackScope: this,
             loop: true
         });
+
+        // Speed Controls
+        this.input.keyboard?.on('keydown-SPACE', () => {
+             this.setSimSpeed(this.simSpeed === 0 ? 1 : 0);
+        });
+        this.input.keyboard?.on('keydown-COMMA', () => {
+             this.setSimSpeed(Math.max(0, this.simSpeed - 1));
+        });
+        this.input.keyboard?.on('keydown-PERIOD', () => {
+             this.setSimSpeed(Math.min(3, this.simSpeed + 1));
+        });
+    }
+
+    public setSimSpeed(speed: number) {
+        this.simSpeed = speed;
+
+        // Update timer
+        if (this.simTimer) this.simTimer.remove();
+
+        if (this.simSpeed > 0) {
+            this.simTimer = this.time.addEvent({
+                delay: this.SPEED_DELAYS[this.simSpeed],
+                callback: this.tickSimulation,
+                callbackScope: this,
+                loop: true
+            });
+        }
+
+        this.scene.get('MainUI').events.emit('speedChanged', this.simSpeed);
     }
 
     updateMarkerSize() {
@@ -167,6 +200,7 @@ export class CityMap extends Phaser.Scene {
         }
 
         let placed = false;
+        let actualCost = cost;
 
         if (currentTool === TILE_TYPES.GRASS) {
             // Bulldozer
@@ -174,6 +208,9 @@ export class CityMap extends Phaser.Scene {
             const isTarget3x3 = targetType >= TILE_TYPES.RES_EMPTY && targetType < TILE_TYPES.BRIDGE_ROAD;
 
             if (isTarget3x3) {
+                // Pre-check funds for bulldozing a 3x3
+                if (this.cityData.funds < cost * 9) return;
+
                 // Find top-left of the 3x3
                 let originX = x;
                 let originY = y;
@@ -191,6 +228,7 @@ export class CityMap extends Phaser.Scene {
                         this.cityData.setTile(originX + cx, originY + cy, TILE_TYPES.GRASS, true);
                     }
                 }
+                actualCost = cost * 9; // Bulldozing 9 tiles
                 placed = true;
             } else {
                 // Standard 1x1 Bulldozer
@@ -201,16 +239,25 @@ export class CityMap extends Phaser.Scene {
             }
         } else if (this.is3x3Mode) {
             // Place 3x3 Zone
-            // 1. Collision check
+            // 1. Collision check (allow over DIRT and TREE, but count them for clearing cost)
             let canPlace = true;
+            let clearCount = 0;
             for (let cy = 0; cy < 3; cy++) {
                 for (let cx = 0; cx < 3; cx++) {
-                    if (this.cityData.getTile(x + cx, y + cy) !== TILE_TYPES.GRASS) {
+                    const t = this.cityData.getTile(x + cx, y + cy);
+                    if (t === TILE_TYPES.DIRT || t === TILE_TYPES.TREE) {
+                         clearCount++;
+                    } else if (t !== TILE_TYPES.GRASS) {
                         canPlace = false;
                     }
                 }
             }
             
+            // 2. Secondary fund check for terrain clearing cost
+            if (this.cityData.funds < cost + (clearCount * this.getToolCost(TILE_TYPES.GRASS))) {
+                 canPlace = false;
+            }
+
             if (canPlace) {
                 for (let cy = 0; cy < 3; cy++) {
                     for (let cx = 0; cx < 3; cx++) {
@@ -226,6 +273,7 @@ export class CityMap extends Phaser.Scene {
                         this.cityData.updateTileAndNeighbors(x + cx, y + cy);
                     }
                 }
+                actualCost += clearCount * this.getToolCost(TILE_TYPES.GRASS);
                 placed = true;
             }
         } else {
@@ -254,8 +302,16 @@ export class CityMap extends Phaser.Scene {
             // Allow placing on grass, dirt, or tree (which gets bulldozed implicitly)
             else if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
                 if (targetType !== currentTool) {
-                    this.cityData.setTile(x, y, currentTool, true);
-                    placed = true;
+                    let clearCost = 0;
+                    if (targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
+                        clearCost = this.getToolCost(TILE_TYPES.GRASS);
+                    }
+
+                    if (this.cityData.funds >= cost + clearCost) {
+                        this.cityData.setTile(x, y, currentTool, true);
+                        actualCost += clearCost;
+                        placed = true;
+                    }
                 }
             }
         }
@@ -264,7 +320,7 @@ export class CityMap extends Phaser.Scene {
             if (currentTool >= TILE_TYPES.MAYOR_HOUSE) {
                 this.cityData.placedGifts.add(currentTool);
             }
-            this.cityData.funds -= cost;
+            this.cityData.funds -= actualCost;
             if (currentTool === TILE_TYPES.GRASS) {
                 audioManager.playBulldoze();
             } else {

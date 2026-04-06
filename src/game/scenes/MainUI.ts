@@ -6,6 +6,7 @@ export class MainUI extends Phaser.Scene {
     private fundsText!: Phaser.GameObjects.Text;
     private dateText!: Phaser.GameObjects.Text;
     private popText!: Phaser.GameObjects.Text;
+    private speedText!: Phaser.GameObjects.Text;
     
     private rciBars!: { r: Phaser.GameObjects.Graphics, c: Phaser.GameObjects.Graphics, i: Phaser.GameObjects.Graphics };
     private modeText!: Phaser.GameObjects.Text;
@@ -61,14 +62,22 @@ export class MainUI extends Phaser.Scene {
         let startY = hudHeight + 5;
 
         // Setup HUD Text
-        const textStyle = { fontSize: '16px', color: '#ffffff', fontFamily: 'monospace' };
-        this.fundsText = this.add.text(80, 8, 'Funds: $20000', textStyle);
-        this.dateText = this.add.text(280, 8, 'Jan 1900', textStyle);
-        this.popText = this.add.text(460, 8, 'Pop: 0', textStyle);
+        const textStyle = { fontSize: '14px', color: '#ffffff', fontFamily: 'monospace' };
+        this.fundsText = this.add.text(80, 10, 'Funds: $20000', textStyle);
+        this.dateText = this.add.text(230, 10, 'Jan 1900', textStyle);
+        this.popText = this.add.text(340, 10, 'Pop: 0', textStyle);
+        this.speedText = this.add.text(430, 10, 'Speed: SLOW', textStyle);
 
-        this.modeText = this.add.text(this.cameras.main.width - 220, 8, 'View: Normal (V)', textStyle);
+        this.modeText = this.add.text(this.cameras.main.width - 240, 10, 'View: Normal (V)', textStyle);
         this.events.on('viewModeChanged', (mode: string) => {
             this.modeText.setText(`View: ${mode} (V)`);
+        });
+
+        this.events.on('speedChanged', (speed: number) => {
+            const speeds = ['PAUSED', 'SLOW', 'NORM', 'FAST'];
+            this.speedText.setText(`Speed: ${speeds[speed]}`);
+            if (speed === 0) this.speedText.setColor('#ff0000');
+            else this.speedText.setColor('#ffffff');
         });
 
         // Add Eval Button
@@ -367,8 +376,9 @@ export class MainUI extends Phaser.Scene {
             
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const m = data.dateMonth - 1;
-            const taxPct = Math.round(data.taxRate * 100);
-            this.dateText.setText(`${months[m]} ${data.dateYear}  Tax: ${taxPct}%`);
+            this.dateText.setText(`${months[m]} ${data.dateYear}`);
+            // Move Tax to its own text or combine it. We'll combine it with pop to save horizontal space, or just keep it simple
+            // Actually, we'll just omit tax from the top bar to clean it up. The user can adjust it and see it in the budget report.
             
             // Update RCI Meter (-1 to 1 mapped to -45 to 45 pixels)
             const meterY = this.cameras.main.height - 120;

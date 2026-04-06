@@ -54,10 +54,6 @@ export class EvaluationUI extends Phaser.Scene {
         // Graph Legend
         const legendX = startX + windowWidth - 150;
         const legendY = startY + 80;
-        this.add.text(legendX, legendY, 'City Pop', {color:'#0f0', fontSize:'14px', fontFamily:'monospace'});
-        this.add.text(legendX, legendY + 20, 'Funds', {color:'#ff0', fontSize:'14px', fontFamily:'monospace'});
-        this.add.text(legendX, legendY + 40, 'Crime', {color:'#f00', fontSize:'14px', fontFamily:'monospace'});
-        this.add.text(legendX, legendY + 60, 'Pollution', {color:'#a52a2a', fontSize:'14px', fontFamily:'monospace'});
 
         this.container.add([bg, win, title, this.graphGraphics, closeBtn, toggleBtn,
             this.add.text(legendX, legendY, 'City Pop', {color:'#0f0', fontSize:'14px', fontFamily:'monospace'}),
