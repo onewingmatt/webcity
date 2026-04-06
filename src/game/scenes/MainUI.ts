@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { audioManager } from '../AudioManager';
 
 export class MainUI extends Phaser.Scene {
     public activeTool: number = 16; // Default to Road (16)
@@ -36,62 +37,102 @@ export class MainUI extends Phaser.Scene {
         bg.lineStyle(4, 0xffffff, 1); // White border
         bg.strokeRect(0, 0, sidebarWidth, this.cameras.main.height);
 
-        // Expand tools to include Rail, Park, Train Depot.
-        // We will just map them to keys 0-9, and Q/W for the rest.
-        // Note: For MVP we use existing icons as placeholders for new tools.
+        // Expand tools to include Seaport, Airport.
         const tools = [
             { id: 0, frame: 0, key: '0', is3x3: false, label: 'Bulldoze' },
             { id: 16, frame: 1, key: '1', is3x3: false, label: 'Road' },
-            { id: 240, frame: 1, key: '2', is3x3: false, label: 'Rail' },     // Using Road icon placeholder
+            { id: 240, frame: 1, key: '2', is3x3: false, label: 'Rail' },
             { id: 32, frame: 2, key: '3', is3x3: false, label: 'Power Line' },
-            { id: 4, frame: 0, key: '4', is3x3: false, label: 'Park' },       // Park is 1x1
+            { id: 4, frame: 0, key: '4', is3x3: false, label: 'Park' },
             { id: 48, frame: 3, key: '5', is3x3: true, label: 'Residential' },
             { id: 60, frame: 4, key: '6', is3x3: true, label: 'Commercial' },
             { id: 105, frame: 5, key: '7', is3x3: true, label: 'Industrial' },
-            { id: 150, frame: 6, key: '8', is3x3: true, label: 'Power Plant' },
-            { id: 192, frame: 6, key: '9', is3x3: true, label: 'Train Depot' }, // Using Power Plant icon placeholder
-            { id: 153, frame: 4, key: 'Q', is3x3: true, label: 'Police' },      // Using 'C' icon placeholder
-            { id: 156, frame: 5, key: 'W', is3x3: true, label: 'Fire' },        // Using 'I' icon placeholder
+            { id: 153, frame: 4, key: '8', is3x3: true, label: 'Police' },
+            { id: 156, frame: 5, key: '9', is3x3: true, label: 'Fire' },
+            { id: 195, frame: 5, key: 'Q', is3x3: true, label: 'Seaport' },     // Using 'I' icon
+            { id: 198, frame: 4, key: 'W', is3x3: true, label: 'Airport' },     // Using 'C' icon
+            { id: 150, frame: 6, key: 'E', is3x3: true, label: 'Power Plant' },
+            { id: 192, frame: 6, key: 'R', is3x3: true, label: 'Train Depot' },
+            { id: 201, frame: 4, key: 'A', is3x3: true, label: 'Mayor House' }, // Placeholder icons
+            { id: 204, frame: 5, key: 'S', is3x3: true, label: 'Casino' },
+            { id: 207, frame: 6, key: 'D', is3x3: true, label: 'Park' },
         ];
 
-        let startY = hudHeight + 10;
+        let startY = hudHeight + 5;
 
         // Setup HUD Text
         const textStyle = { fontSize: '16px', color: '#ffffff', fontFamily: 'monospace' };
         this.fundsText = this.add.text(80, 8, 'Funds: $20000', textStyle);
-        this.dateText = this.add.text(300, 8, 'Jan 1900', textStyle);
-        this.popText = this.add.text(500, 8, 'Pop: 0', textStyle);
-        
-        this.modeText = this.add.text(this.cameras.main.width - 200, 8, 'View: Normal (P)', textStyle);
-        this.events.on('pollutionToggled', (isPollution: boolean) => {
-            this.modeText.setText(`View: ${isPollution ? 'Pollution' : 'Normal'} (P)`);
+        this.dateText = this.add.text(280, 8, 'Jan 1900', textStyle);
+        this.popText = this.add.text(460, 8, 'Pop: 0', textStyle);
+
+        this.modeText = this.add.text(this.cameras.main.width - 220, 8, 'View: Normal (V)', textStyle);
+        this.events.on('viewModeChanged', (mode: string) => {
+            this.modeText.setText(`View: ${mode} (V)`);
         });
+
+        // Add Eval Button
+        this.add.text(this.cameras.main.width - 100, 8, 'EVAL (Z)', { fontSize: '16px', color: '#ff0', fontFamily: 'monospace', backgroundColor: '#000' })
+            .setInteractive()
+            .on('pointerdown', () => {
+                audioManager.playClick();
+                this.events.emit('openEvaluation');
+            });
 
         // Setup RCI Meter
         this.setupRCIMeter();
         
         const toolIcons: { icon: Phaser.GameObjects.Image, border: Phaser.GameObjects.Graphics }[] = [];
 
-        // We have 12 tools now, so let's adjust spacing or draw them in two columns if needed.
-        // For simplicity, we just pack them tighter in the sidebar.
+        // We have 17 tools now, draw in two columns
         tools.forEach((tool, index) => {
+            const col = index % 2;
+            const row = Math.floor(index / 2);
+
             // Draw selection border (hidden initially)
             const border = this.add.graphics();
             border.lineStyle(2, 0xffff00, 1);
-            const iconY = startY + (index * 34); // tighter spacing
-            border.strokeRect(16 - 2, iconY - 2, 32 + 4, 32 + 4);
+            const iconX = 2 + (col * 32);
+            const iconY = startY + (row * 36);
+            border.strokeRect(iconX - 2, iconY - 2, 30 + 4, 30 + 4);
             border.setVisible(false);
 
             // Add UI Icon
-            const icon = this.add.image(16 + 16, iconY + 16, 'ui_icons', tool.frame)
+            const icon = this.add.image(iconX + 15, iconY + 15, 'ui_icons', tool.frame)
                 .setInteractive()
                 .setScale(0.8) // Scale down slightly to fit
-                .on('pointerdown', () => this.setActiveTool(tool.id, toolIcons));
+                .on('pointerdown', () => {
+                    audioManager.playClick();
+                    this.setActiveTool(tool.id, toolIcons);
+                });
+
+            // For Gifts, we initially hide them or grey them out, but for this step we will just grey them out
+            // Let's hide them if not unlocked
+            if (tool.id >= 201) {
+                icon.setAlpha(0.2);
+            }
             
-            // Tooltip text helper
-            this.add.text(50, iconY + 8, tool.key, { fontSize: '12px', color: '#fff' });
+            // Tooltip text helper (draw over icon)
+            this.add.text(iconX + 2, iconY + 2, tool.key, { fontSize: '10px', color: '#fff', backgroundColor: '#000' });
             
             toolIcons.push({ icon, border });
+        });
+
+        // Listen to check unlocked gifts
+        this.events.on('updateGifts', () => {
+            const cityScene = this.scene.get('CityMap') as any;
+            if (cityScene && cityScene.cityData) {
+                const unlocked = cityScene.cityData.unlockedGifts;
+                tools.forEach((t, i) => {
+                    if (t.id >= 201) {
+                        if (unlocked.has(t.id)) {
+                             toolIcons[i].icon.setAlpha(1.0);
+                        } else {
+                             toolIcons[i].icon.setAlpha(0.2);
+                        }
+                    }
+                });
+            }
         });
 
         // Set initial active state
@@ -100,14 +141,17 @@ export class MainUI extends Phaser.Scene {
         // Keyboard shortcuts for tools
         this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
             const keyChar = event.key.toUpperCase();
-            const toolMap: Record<string, number> = {
-                '0': 0, '1': 16, '2': 240, '3': 32, '4': 4,
-                '5': 48, '6': 60, '7': 105, '8': 150, '9': 192,
-                'Q': 153, 'W': 156
-            };
+            const toolMap: Record<string, number> = {};
+            tools.forEach(t => toolMap[t.key] = t.id);
             if (toolMap[keyChar] !== undefined) {
                 this.setActiveTool(toolMap[keyChar], toolIcons);
             }
+        });
+
+        // Keyboard shortcut for Evaluation
+        this.input.keyboard?.on('keydown-Z', () => {
+            audioManager.playClick();
+            this.events.emit('openEvaluation');
         });
 
         // Keyboard shortcuts for taxes
@@ -209,16 +253,32 @@ export class MainUI extends Phaser.Scene {
 
         // Click to dismiss/next
         bg.setInteractive(new Phaser.Geom.Rectangle(0, 0, boxWidth, boxHeight), Phaser.Geom.Rectangle.Contains);
-        bg.on('pointerdown', () => this.advanceMessage());
+        bg.on('pointerdown', () => {
+            audioManager.playClick();
+            this.advanceMessage();
+        });
 
         this.advisorContainer.add([bg, portraitBg, portrait, this.advisorText, clickPrompt]);
     }
 
     handleSimulationEvents(stats: any) {
-        const { totalPollution, highTrafficTiles, roadTiles, population, totalCrime, budgetReport, net, taxes, upkeep } = stats;
+        const { totalPollution, highTrafficTiles, roadTiles, population, totalCrime, budgetReport, net, taxes, upkeep, disaster } = stats;
+
+        if (disaster === 'FIRE') {
+            this.queueMessage("FIRE! A fire has broken out in the city. Build Fire Stations to stop the spread, or bulldoze the area!");
+            return;
+        }
 
         if (budgetReport) {
-            this.queueMessage(`Year End Report: Collected $${taxes} in taxes. Paid $${upkeep} in road upkeep. Net change: $${net}. Use +/- to adjust tax rate.`);
+            // Calculate a simple "Approval Rating" for the evaluation
+            let approval = 50; // Base 50%
+            if (net > 0) approval += 10;
+            if (totalPollution > 100) approval -= 15;
+            if (totalCrime > 50) approval -= 15;
+            if (population > 500) approval += 20;
+            approval = Math.max(0, Math.min(100, approval));
+
+            this.queueMessage(`Year End Report! Approval Rating: ${approval}%. Collected $${taxes} in taxes. Paid $${upkeep} in road upkeep. Net change: $${net}. Use +/- to adjust tax rate.`);
             return;
         }
 
@@ -256,6 +316,7 @@ export class MainUI extends Phaser.Scene {
             const msg = this.messageQueue[0];
             this.advisorText.setText(msg);
             this.advisorContainer.setVisible(true);
+            audioManager.playAlert();
         } else {
             this.isMessageActive = false;
             this.advisorContainer.setVisible(false);
@@ -300,6 +361,7 @@ export class MainUI extends Phaser.Scene {
         const cityScene = this.scene.get('CityMap') as any;
         if (cityScene && cityScene.cityData) {
             const data = cityScene.cityData;
+            this.events.emit('updateGifts');
             this.fundsText.setText(`Funds: $${data.funds}`);
             this.popText.setText(`Pop: ${data.population}`);
             
@@ -335,9 +397,8 @@ export class MainUI extends Phaser.Scene {
         this.activeTool = toolId;
         
         // Let CityMap know if it's a 3x3 tool
-        const toolMap = [0, 16, 240, 32, 4, 48, 60, 105, 150, 192, 153, 156];
-        // 240 is RAIL_BASE which is 1x1. Everything else >= 48 is 3x3.
-        const is3x3 = toolId >= 48 && toolId !== 240;
+        const toolMap = [0, 16, 240, 32, 4, 48, 60, 105, 153, 156, 195, 198, 150, 192, 201, 204, 207];
+        const is3x3 = toolId >= 48 && toolId !== 240 && toolId !== 224 && toolId !== 256;
         this.scene.get('CityMap').events.emit('toolChanged', is3x3);
 
         const activeIdx = toolMap.indexOf(toolId);

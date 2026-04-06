@@ -5,6 +5,7 @@ import { Simulation } from '../../simulation/Simulation';
 import { InputManager } from '../../core/InputManager';
 
 import { TILE_TYPES } from '../../simulation/CityData';
+import { audioManager } from '../AudioManager';
 
 export class CityMap extends Phaser.Scene {
     private mapWidth = 50;
@@ -69,9 +70,9 @@ export class CityMap extends Phaser.Scene {
         this.input.mouse?.disableContextMenu();
 
         // Setup Pollution Toggle
-        this.input.keyboard?.on('keydown-P', () => {
+        this.input.keyboard?.on('keydown-V', () => {
             this.showPollutionLayer = !this.showPollutionLayer;
-            this.scene.get('MainUI').events.emit('pollutionToggled', this.showPollutionLayer);
+            this.scene.get('MainUI').events.emit('viewModeChanged', this.showPollutionLayer ? 'Pollution' : 'Normal');
             this.tickSimulation(); // Force redraw
         });
 
@@ -152,6 +153,12 @@ export class CityMap extends Phaser.Scene {
 
         const currentTool = uiScene.activeTool;
         
+        // Prevent placing gifts if not unlocked or already placed
+        if (currentTool >= TILE_TYPES.MAYOR_HOUSE) {
+            if (!this.cityData.unlockedGifts.has(currentTool)) return;
+            if (this.cityData.placedGifts.has(currentTool)) return; // Only allow 1 of each gift
+        }
+
         // Check funds (Importing TOOL_COSTS inline here for safety, it's exported from CityData)
         const cost = this.getToolCost(currentTool);
         if (this.cityData.funds < cost) {
@@ -164,7 +171,7 @@ export class CityMap extends Phaser.Scene {
         if (currentTool === TILE_TYPES.GRASS) {
             // Bulldozer
             const targetType = this.cityData.getTile(x, y);
-            const isTarget3x3 = targetType >= TILE_TYPES.RES_EMPTY && targetType < TILE_TYPES.RAIL_BASE;
+            const isTarget3x3 = targetType >= TILE_TYPES.RES_EMPTY && targetType < TILE_TYPES.BRIDGE_ROAD;
 
             if (isTarget3x3) {
                 // Find top-left of the 3x3
@@ -224,9 +231,28 @@ export class CityMap extends Phaser.Scene {
         } else {
             // Place 1x1 Road, Rail, Power, or Park
             const targetType = this.cityData.getTile(x, y);
+
+            // Handle Bridging
+            if (targetType === TILE_TYPES.WATER) {
+                if (currentTool === TILE_TYPES.ROAD_BASE) {
+                    if (this.cityData.funds >= this.getToolCost(TILE_TYPES.BRIDGE_ROAD)) {
+                        this.cityData.setTile(x, y, TILE_TYPES.BRIDGE_ROAD, true);
+                        this.cityData.funds -= this.getToolCost(TILE_TYPES.BRIDGE_ROAD);
+                        audioManager.playBuild();
+                        // We handled cost manually since bridging dynamically swaps the tool
+                        return;
+                    }
+                } else if (currentTool === TILE_TYPES.RAIL_BASE) {
+                    if (this.cityData.funds >= this.getToolCost(TILE_TYPES.BRIDGE_RAIL)) {
+                        this.cityData.setTile(x, y, TILE_TYPES.BRIDGE_RAIL, true);
+                        this.cityData.funds -= this.getToolCost(TILE_TYPES.BRIDGE_RAIL);
+                        audioManager.playBuild();
+                        return;
+                    }
+                }
+            }
             // Allow placing on grass, dirt, or tree (which gets bulldozed implicitly)
-            // Cannot place on water! (unless bridging, skipping for MVP)
-            if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
+            else if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
                 if (targetType !== currentTool) {
                     this.cityData.setTile(x, y, currentTool, true);
                     placed = true;
@@ -235,7 +261,15 @@ export class CityMap extends Phaser.Scene {
         }
 
         if (placed) {
+            if (currentTool >= TILE_TYPES.MAYOR_HOUSE) {
+                this.cityData.placedGifts.add(currentTool);
+            }
             this.cityData.funds -= cost;
+            if (currentTool === TILE_TYPES.GRASS) {
+                audioManager.playBulldoze();
+            } else {
+                audioManager.playBuild();
+            }
         }
     }
 
@@ -245,6 +279,8 @@ export class CityMap extends Phaser.Scene {
             case TILE_TYPES.PARK: return 10;
             case TILE_TYPES.ROAD_BASE: return 10;
             case TILE_TYPES.RAIL_BASE: return 20;
+            case TILE_TYPES.BRIDGE_ROAD: return 50;
+            case TILE_TYPES.BRIDGE_RAIL: return 100;
             case TILE_TYPES.POWER_LINE_BASE: return 5;
             case TILE_TYPES.RES_EMPTY: return 100;
             case TILE_TYPES.COM_EMPTY: return 100;
@@ -253,6 +289,8 @@ export class CityMap extends Phaser.Scene {
             case TILE_TYPES.POLICE_STATION: return 500;
             case TILE_TYPES.FIRE_STATION: return 500;
             case TILE_TYPES.TRAIN_DEPOT: return 500;
+            case TILE_TYPES.SEAPORT: return 3000;
+            case TILE_TYPES.AIRPORT: return 10000;
             default: return 0;
         }
     }
@@ -289,8 +327,8 @@ export class CityMap extends Phaser.Scene {
                         const is3x3 = type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE;
                         const needsPower = is3x3;
 
-                        // Check traffic on roads
-                        if (type === TILE_TYPES.ROAD_BASE) {
+                        // Check traffic on roads/bridges
+                        if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD) {
                             const traffic = this.cityData.trafficGrid[y][x];
                             if (traffic > 20) {
                                 tile.tint = 0x666666; // Heavy traffic darkens road

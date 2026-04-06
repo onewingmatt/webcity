@@ -4,14 +4,10 @@ export const TILE_TYPES = {
     WATER: 2,
     TREE: 3,
     PARK: 4,
+    FIRE: 5,
 
     ROAD_BASE: 16,
     POWER_LINE_BASE: 32,
-    // Note: 48 starts 3x3 zones. Let's put RAIL_BASE at the end of the tileset to avoid collisions,
-    // since it needs a full 16 frames for auto-tiling.
-    // Row 15 (starts at 240)
-    RAIL_BASE: 240,
-
     // 3x3 Zones - each block is 3 wide, taking up 3 horizontal tiles.
     // Tileset is 16 columns wide. Maximum 5 blocks per row (indices 0, 3, 6, 9, 12).
 
@@ -37,7 +33,21 @@ export const TILE_TYPES = {
     FIRE_STATION: 156,
 
     // Row 12 (starts at 192)
-    TRAIN_DEPOT: 192
+    TRAIN_DEPOT: 192,
+    SEAPORT: 195,
+    AIRPORT: 198,
+    MAYOR_HOUSE: 201,
+    CASINO: 204,
+    AMUSEMENT_PARK: 207,
+
+    // Note: 48 starts 3x3 zones. Let's put RAIL_BASE at the end of the tileset to avoid collisions,
+    // since it needs a full 16 frames for auto-tiling.
+    // Row 14 (starts at 224)
+    BRIDGE_ROAD: 224,
+    // Row 15 (starts at 240)
+    RAIL_BASE: 240,
+    // Row 16 (starts at 256)
+    BRIDGE_RAIL: 256
 };
 
 export const TOOL_COSTS = {
@@ -45,6 +55,8 @@ export const TOOL_COSTS = {
     [TILE_TYPES.PARK]: 10,
     [TILE_TYPES.ROAD_BASE]: 10,
     [TILE_TYPES.RAIL_BASE]: 20,
+    [TILE_TYPES.BRIDGE_ROAD]: 50,
+    [TILE_TYPES.BRIDGE_RAIL]: 100,
     [TILE_TYPES.POWER_LINE_BASE]: 5,
     [TILE_TYPES.RES_EMPTY]: 100,
     [TILE_TYPES.COM_EMPTY]: 100,
@@ -52,7 +64,12 @@ export const TOOL_COSTS = {
     [TILE_TYPES.POWER_PLANT]: 3000,
     [TILE_TYPES.POLICE_STATION]: 500,
     [TILE_TYPES.FIRE_STATION]: 500,
-    [TILE_TYPES.TRAIN_DEPOT]: 500
+    [TILE_TYPES.TRAIN_DEPOT]: 500,
+    [TILE_TYPES.SEAPORT]: 3000,
+    [TILE_TYPES.AIRPORT]: 10000,
+    [TILE_TYPES.MAYOR_HOUSE]: 0,
+    [TILE_TYPES.CASINO]: 0,
+    [TILE_TYPES.AMUSEMENT_PARK]: 0
 };
 
 export class CityData {
@@ -77,6 +94,13 @@ export class CityData {
     public dateMonth: number = 1;
     public dateYear: number = 1900;
     
+    // History (for Evaluation Graph)
+    public history: { year: number, pop: number, funds: number, crime: number, pollution: number }[] = [];
+
+    // Gifts
+    public unlockedGifts: Set<number> = new Set();
+    public placedGifts: Set<number> = new Set();
+
     // Budget
     public taxRate: number = 0.07; // 7% tax rate default
     public lastTaxesCollected: number = 0;
@@ -204,7 +228,8 @@ export class CityData {
         
         const type = this.typeGrid[y][x];
         
-        if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.POWER_LINE_BASE || type === TILE_TYPES.RAIL_BASE) {
+        if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.POWER_LINE_BASE || type === TILE_TYPES.RAIL_BASE ||
+            type === TILE_TYPES.BRIDGE_ROAD || type === TILE_TYPES.BRIDGE_RAIL) {
             let mask = 0;
             // North
             if (this.isConnectable(x, y - 1, type)) mask |= 1;
@@ -218,7 +243,7 @@ export class CityData {
             // For Rails crossing Roads, or Rails crossing Power lines, we'd need specific intersection frames.
             // For simplicity, we just use the mask on the base type.
             this.frameGrid[y][x] = type + mask;
-        } else if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE) {
+        } else if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.BRIDGE_ROAD) {
              // For 3x3 zones, the frame is set explicitly during placement, do nothing here.
         } else {
              this.frameGrid[y][x] = type;
@@ -230,14 +255,20 @@ export class CityData {
         const type = this.typeGrid[y][x];
         
         if (type === targetType) return true;
+
+        // Bridges connect to their respective transit types
+        if (targetType === TILE_TYPES.ROAD_BASE && type === TILE_TYPES.BRIDGE_ROAD) return true;
+        if (targetType === TILE_TYPES.BRIDGE_ROAD && type === TILE_TYPES.ROAD_BASE) return true;
+        if (targetType === TILE_TYPES.RAIL_BASE && type === TILE_TYPES.BRIDGE_RAIL) return true;
+        if (targetType === TILE_TYPES.BRIDGE_RAIL && type === TILE_TYPES.RAIL_BASE) return true;
         
         // Power lines can connect to zones and power plants
         if (targetType === TILE_TYPES.POWER_LINE_BASE) {
-            if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE) return true; // Connects to any 3x3 zone/building
+            if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.BRIDGE_ROAD) return true; // Connects to any 3x3 zone/building
         }
 
         // Rails connect to Depots
-        if (targetType === TILE_TYPES.RAIL_BASE) {
+        if (targetType === TILE_TYPES.RAIL_BASE || targetType === TILE_TYPES.BRIDGE_RAIL) {
             if (type === TILE_TYPES.TRAIN_DEPOT) return true;
         }
         
