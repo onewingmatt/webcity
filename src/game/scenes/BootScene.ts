@@ -6,6 +6,8 @@ export class BootScene extends Phaser.Scene {
     }
 
     preload() {
+        console.log('BootScene: Starting preload...');
+
         // Load the tileset we generated
         this.load.spritesheet('tiles', `${import.meta.env.BASE_URL}tileset_v2.png`, {
             frameWidth: 16,
@@ -17,9 +19,13 @@ export class BootScene extends Phaser.Scene {
             frameWidth: 32,
             frameHeight: 32
         });
+
+        console.log('BootScene: Assets queued for loading');
     }
 
     create() {
+        console.log('BootScene: Creating assets...');
+
         // Generate placeholder Advisor graphic
         const g = this.make.graphics({ x: 0, y: 0 }, false);
         g.fillStyle(0xd2b48c, 1); // Tan face
@@ -40,7 +46,9 @@ export class BootScene extends Phaser.Scene {
         g.fillRect(24, 46, 16, 4);
         g.generateTexture('advisor', 64, 64);
 
+        console.log('BootScene: Starting CityMap scene...');
         this.scene.start('CityMap');
+        console.log('BootScene: Launching MainUI scene...');
         this.scene.launch('MainUI');
     }
 }
