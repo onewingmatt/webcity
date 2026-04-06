@@ -6,13 +6,27 @@ export const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
   height: 600,
   parent: null,
   pixelArt: true,
-  backgroundColor: '#000000',
+  backgroundColor: '#1a1a2e',
   scale: {
     mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: 800,
+    height: 600,
+    min: {
+      width: 400,
+      height: 300
+    }
   },
   input: {
     gamepad: true
   },
-  scene: []
+  scene: [],
+  callbacks: {
+    preBoot: () => {
+      console.log('Phaser preBoot callback');
+    },
+    postBoot: () => {
+      console.log('Phaser postBoot callback');
+    }
+  }
 };
