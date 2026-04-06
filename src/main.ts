@@ -9,11 +9,20 @@ import { NewspaperUI } from './game/scenes/NewspaperUI';
 const loadingEl = document.getElementById('loading');
 
 function showError(message: string) {
-    if (loadingEl) loadingEl.remove();
+    if (loadingEl) {
+        loadingEl.textContent = 'Error: ' + message;
+        loadingEl.style.color = 'red';
+    }
     const div = document.createElement('div');
     div.style.cssText = 'position:fixed;top:10px;left:10px;padding:10px;background:red;color:white;z-index:9999;font-family:sans-serif;font-size:14px;';
     div.textContent = message;
     document.body.appendChild(div);
+}
+
+function showStatus(message: string) {
+    if (loadingEl) {
+        loadingEl.textContent = message;
+    }
 }
 
 function hideLoading() {
@@ -21,7 +30,7 @@ function hideLoading() {
 }
 
 function initGame() {
-    console.log('Initializing SimCity Web...');
+    showStatus('Phaser loaded, starting game...');
 
     const config = {
         ...GAME_CONFIG,
@@ -48,13 +57,17 @@ function initGame() {
 
 setTimeout(() => {
     if (typeof Phaser === 'undefined') {
-        showError('Phaser not loaded');
+        showError('Phaser not loaded after 1 second');
+    } else {
+        showStatus('Loading scenes...');
+        // Wait for DOM to be ready
+        if (document.readyState === 'complete') {
+            initGame();
+        } else {
+            window.addEventListener('load', initGame);
+        }
     }
-}, 1000);
+}, 500);
 
-// Wait for DOM to be ready
-if (document.readyState === 'complete') {
-    initGame();
-} else {
-    window.addEventListener('load', initGame);
-}
+// Initial status
+showStatus('Loading Phaser...');
