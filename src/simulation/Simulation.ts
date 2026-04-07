@@ -530,8 +530,11 @@ export class Simulation {
     private calculateCommute(startX: number, startY: number) {
         // BFS to find nearest Commercial or Industrial zone along roads/rails
         const MAX_DISTANCE = 40; // Limit search for performance (slightly higher for rails)
-        const queue: {x: number, y: number, dist: number, path: {x:number, y:number}[]}[] = [];
-        const visited = new Set<string>();
+
+        // Instead of tracking full paths (which creates exponential memory and lag),
+        // we use a standard BFS and track the parent of each node to reconstruct the path later.
+        const queue: {x: number, y: number, dist: number}[] = [];
+        const visited = new Map<string, {x: number, y: number} | null>();
 
         // Find an adjacent transit tile to start the commute
         const neighbors = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
@@ -541,14 +544,15 @@ export class Simulation {
             if (this.cityData.isValid(nx, ny)) {
                 const type = this.cityData.getTile(nx, ny);
                 if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE || type === TILE_TYPES.BRIDGE_ROAD || type === TILE_TYPES.BRIDGE_RAIL) {
-                    queue.push({x: nx, y: ny, dist: 0, path: [{x: nx, y: ny}]});
-                    visited.add(`${nx},${ny}`);
+                    queue.push({x: nx, y: ny, dist: 0});
+                    visited.set(`${nx},${ny}`, null); // null parent means start node
                 }
             }
         }
 
         let head = 0;
         let destinationFound = false;
+        let destNode: {x: number, y: number} | null = null;
 
         while (head < queue.length) {
             const current = queue[head++];
@@ -564,17 +568,7 @@ export class Simulation {
                     if ((type >= TILE_TYPES.COM_EMPTY && type <= TILE_TYPES.COM_HIGH && type !== TILE_TYPES.COM_EMPTY) ||
                         (type >= TILE_TYPES.IND_EMPTY && type <= TILE_TYPES.IND_HIGH && type !== TILE_TYPES.IND_EMPTY)) {
                         destinationFound = true;
-                        // Apply traffic to path ONLY on roads
-                        for (const step of current.path) {
-                            const stepType = this.cityData.getTile(step.x, step.y);
-                            if (stepType === TILE_TYPES.ROAD_BASE || stepType === TILE_TYPES.BRIDGE_ROAD) {
-                                this.cityData.trafficGrid[step.y][step.x] += 5;
-                                // High traffic generates pollution
-                                if (this.cityData.trafficGrid[step.y][step.x] > 20) {
-                                    this.cityData.pollutionGrid[step.y][step.x] += 2;
-                                }
-                            }
-                        }
+                        destNode = current;
                         break;
                     }
                 }
@@ -591,14 +585,28 @@ export class Simulation {
                 if (this.cityData.isValid(nx, ny) && !visited.has(key)) {
                     const type = this.cityData.getTile(nx, ny);
                     if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.RAIL_BASE || type === TILE_TYPES.BRIDGE_ROAD || type === TILE_TYPES.BRIDGE_RAIL) {
-                        visited.add(key);
-                        queue.push({
-                            x: nx, y: ny,
-                            dist: current.dist + 1,
-                            path: [...current.path, {x: nx, y: ny}]
-                        });
+                        visited.set(key, {x: current.x, y: current.y}); // store parent
+                        queue.push({x: nx, y: ny, dist: current.dist + 1});
                     }
                 }
+            }
+        }
+
+        // Reconstruct path if destination found
+        if (destinationFound && destNode) {
+            let curr: {x: number, y: number} | null = destNode;
+            while (curr !== null) {
+                const stepType = this.cityData.getTile(curr.x, curr.y);
+                if (stepType === TILE_TYPES.ROAD_BASE || stepType === TILE_TYPES.BRIDGE_ROAD) {
+                    this.cityData.trafficGrid[curr.y][curr.x] += 5;
+                    // High traffic generates pollution
+                    if (this.cityData.trafficGrid[curr.y][curr.x] > 20) {
+                        this.cityData.pollutionGrid[curr.y][curr.x] += 2;
+                    }
+                }
+
+                // Get parent
+                curr = visited.get(`${curr.x},${curr.y}`) || null;
             }
         }
     }

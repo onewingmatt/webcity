@@ -150,7 +150,14 @@ export class CityMap extends Phaser.Scene {
         // Prevent painting if we are panning with multiple pointers
         const pointer2Down = this.input.pointer2 ? this.input.pointer2.isDown : false;
         if (this.input.activePointer.isDown && this.input.activePointer.button === 0 && !pointer2Down) {
-            actionTriggered = true;
+            // Do not trigger action if the pointer is over the UI (sidebar or top HUD)
+            const x = this.input.activePointer.x;
+            const y = this.input.activePointer.y;
+            const isOverUI = x < 64 || y < 32; // sidebarWidth = 64, hudHeight = 32
+
+            if (!isOverUI) {
+                actionTriggered = true;
+            }
         }
 
         if (pointerTileX >= 0 && pointerTileX < this.mapWidth && 
@@ -321,6 +328,15 @@ export class CityMap extends Phaser.Scene {
                 this.cityData.placedGifts.add(currentTool);
             }
             this.cityData.funds -= actualCost;
+
+            // Instantly sync visual tiles for the affected area to prevent UI delay
+            const syncSize = this.is3x3Mode ? 3 : 1;
+            for (let dy = -1; dy <= syncSize; dy++) {
+                for (let dx = -1; dx <= syncSize; dx++) {
+                    this.syncTileVisual(x + dx, y + dy);
+                }
+            }
+
             if (currentTool === TILE_TYPES.GRASS) {
                 audioManager.playBulldoze();
             } else {
@@ -351,61 +367,69 @@ export class CityMap extends Phaser.Scene {
         }
     }
 
+    syncTileVisual(x: number, y: number) {
+        if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight) return;
+
+        const frame = this.cityData.getFrame(x, y);
+        let tile = this.layer.getTileAt(x, y);
+
+        if (!tile) {
+            tile = this.layer.putTileAt(frame, x, y);
+        } else if (tile.index !== frame) {
+            tile = this.layer.putTileAt(frame, x, y);
+        }
+
+        // Visual indicators
+        if (tile) {
+            const type = this.cityData.getTile(x, y);
+
+            if (this.showPollutionLayer) {
+                // Pollution overlay mode
+                const pollution = this.cityData.pollutionGrid[y][x];
+                if (pollution > 20) {
+                    tile.tint = 0xff0000; // Heavy pollution
+                } else if (pollution > 5) {
+                    tile.tint = 0xffff00; // Medium pollution
+                } else {
+                    tile.tint = 0xffffff;
+                }
+            } else {
+                // Normal play mode
+                const hasPower = this.cityData.powerGrid[y][x];
+                const is3x3 = type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE;
+                const needsPower = is3x3;
+
+                // Check traffic on roads/bridges
+                if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD) {
+                    const traffic = this.cityData.trafficGrid[y][x];
+                    if (traffic > 20) {
+                        tile.tint = 0x666666; // Heavy traffic darkens road
+                    } else if (traffic > 5) {
+                        tile.tint = 0xaaaaaa; // Light traffic
+                    } else {
+                        tile.tint = 0xffffff;
+                    }
+                } else if (type === TILE_TYPES.WATER) {
+                    tile.tint = 0x88ccff; // Slight blue tint for water if the tileset is greyscale
+                } else if (type === TILE_TYPES.TREE) {
+                    tile.tint = 0x228b22; // Forest green tint
+                } else if (type === TILE_TYPES.PARK) {
+                    tile.tint = 0x32cd32; // Lime green tint
+                } else if (needsPower && !hasPower) {
+                    tile.tint = 0x888888; // Darken if unpowered
+                } else {
+                    tile.tint = 0xffffff;
+                }
+            }
+        }
+    }
+
     tickSimulation() {
         this.simulation.tick();
         // Sync map with city data frames
         for(let y=0; y<this.mapHeight; y++) {
             for(let x=0; x<this.mapWidth; x++) {
-                const frame = this.cityData.getFrame(x, y);
-                let tile = this.layer.getTileAt(x, y);
-                
-                if(tile && tile.index !== frame) {
-                    tile = this.layer.putTileAt(frame, x, y);
-                }
-                
-                // Visual indicators
-                if (tile) {
-                    const type = this.cityData.getTile(x, y);
-
-                    if (this.showPollutionLayer) {
-                        // Pollution overlay mode
-                        const pollution = this.cityData.pollutionGrid[y][x];
-                        if (pollution > 20) {
-                            tile.tint = 0xff0000; // Heavy pollution
-                        } else if (pollution > 5) {
-                            tile.tint = 0xffff00; // Medium pollution
-                        } else {
-                            tile.tint = 0xffffff;
-                        }
-                    } else {
-                        // Normal play mode
-                        const hasPower = this.cityData.powerGrid[y][x];
-                        const is3x3 = type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE;
-                        const needsPower = is3x3;
-
-                        // Check traffic on roads/bridges
-                        if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD) {
-                            const traffic = this.cityData.trafficGrid[y][x];
-                            if (traffic > 20) {
-                                tile.tint = 0x666666; // Heavy traffic darkens road
-                            } else if (traffic > 5) {
-                                tile.tint = 0xaaaaaa; // Light traffic
-                            } else {
-                                tile.tint = 0xffffff;
-                            }
-                        } else if (type === TILE_TYPES.WATER) {
-                            tile.tint = 0x88ccff; // Slight blue tint for water if the tileset is greyscale
-                        } else if (type === TILE_TYPES.TREE) {
-                            tile.tint = 0x228b22; // Forest green tint
-                        } else if (type === TILE_TYPES.PARK) {
-                            tile.tint = 0x32cd32; // Lime green tint
-                        } else if (needsPower && !hasPower) {
-                            tile.tint = 0x888888; // Darken if unpowered
-                        } else {
-                            tile.tint = 0xffffff;
-                        }
-                    }
-                }
+                this.syncTileVisual(x, y);
             }
         }
     }
