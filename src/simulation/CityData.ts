@@ -72,6 +72,18 @@ export const TOOL_COSTS = {
     [TILE_TYPES.AMUSEMENT_PARK]: 0
 };
 
+const TILE_FRAME_BASES: Partial<Record<number, number>> = {
+    [TILE_TYPES.POWER_PLANT]: 128,
+    [TILE_TYPES.POLICE_STATION]: 131,
+    [TILE_TYPES.FIRE_STATION]: 134,
+    [TILE_TYPES.TRAIN_DEPOT]: 112,
+    [TILE_TYPES.SEAPORT]: 115,
+    [TILE_TYPES.AIRPORT]: 118,
+    [TILE_TYPES.MAYOR_HOUSE]: 121,
+    [TILE_TYPES.CASINO]: 124,
+    [TILE_TYPES.AMUSEMENT_PARK]: 127
+};
+
 export class CityData {
     public width: number;
     public height: number;
@@ -209,6 +221,10 @@ export class CityData {
             return this.frameGrid[y][x];
         }
         return -1;
+    }
+
+    getFrameBase(type: number): number {
+        return TILE_FRAME_BASES[type] ?? type;
     }
 
     isValid(x: number, y: number) {

@@ -269,7 +269,7 @@ export class CityMap extends Phaser.Scene {
                 for (let cy = 0; cy < 3; cy++) {
                     for (let cx = 0; cx < 3; cx++) {
                         // The frame index in the atlas is Base + (cy * 16) + cx
-                        const frameId = currentTool + (cy * 16) + cx;
+                        const frameId = this.cityData.getFrameBase(currentTool) + (cy * 16) + cx;
                         this.cityData.setTile(x + cx, y + cy, currentTool, false);
                         this.cityData.frameGrid[y + cy][x + cx] = frameId;
                     }

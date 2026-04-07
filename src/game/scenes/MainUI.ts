@@ -38,7 +38,6 @@ export class MainUI extends Phaser.Scene {
         bg.lineStyle(4, 0xffffff, 1); // White border
         bg.strokeRect(0, 0, sidebarWidth, this.cameras.main.height);
 
-        // Expand tools to include Seaport, Airport.
         const tools = [
             { id: 0, frame: 0, key: '0', is3x3: false, label: 'Bulldoze' },
             { id: 16, frame: 1, key: '1', is3x3: false, label: 'Road' },
@@ -50,13 +49,13 @@ export class MainUI extends Phaser.Scene {
             { id: 105, frame: 5, key: '7', is3x3: true, label: 'Industrial' },
             { id: 153, frame: 4, key: '8', is3x3: true, label: 'Police' },
             { id: 156, frame: 5, key: '9', is3x3: true, label: 'Fire' },
-            { id: 195, frame: 5, key: 'Q', is3x3: true, label: 'Seaport' },     // Using 'I' icon
-            { id: 198, frame: 4, key: 'W', is3x3: true, label: 'Airport' },     // Using 'C' icon
+            { id: 195, frame: 5, key: 'Q', is3x3: true, label: 'Seaport' },
+            { id: 198, frame: 4, key: 'W', is3x3: true, label: 'Airport' },
             { id: 150, frame: 6, key: 'E', is3x3: true, label: 'Power Plant' },
             { id: 192, frame: 6, key: 'R', is3x3: true, label: 'Train Depot' },
-            { id: 201, frame: 4, key: 'A', is3x3: true, label: 'Mayor House' }, // Placeholder icons
+            { id: 201, frame: 4, key: 'A', is3x3: true, label: 'Mayor House' },
             { id: 204, frame: 5, key: 'S', is3x3: true, label: 'Casino' },
-            { id: 207, frame: 6, key: 'D', is3x3: true, label: 'Park' },
+            { id: 207, frame: 6, key: 'D', is3x3: true, label: 'Amusement' },
         ];
 
         let startY = hudHeight + 5;

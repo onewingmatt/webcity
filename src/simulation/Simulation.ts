@@ -185,7 +185,7 @@ export class Simulation {
                                 for (let cx = 0; cx < 3; cx++) {
                                     if (this.cityData.isValid(x+cx, y+cy)) {
                                         this.cityData.typeGrid[y+cy][x+cx] = nextType;
-                                        this.cityData.frameGrid[y+cy][x+cx] = nextType + (cy * 16) + cx;
+                                        this.cityData.frameGrid[y+cy][x+cx] = this.cityData.getFrameBase(nextType) + (cy * 16) + cx;
                                     }
                                 }
                             }
