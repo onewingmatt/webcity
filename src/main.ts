@@ -30,7 +30,7 @@ function hideLoading() {
 }
 
 function initGame() {
-    showStatus('Phaser loaded, starting game...');
+    showStatus('Starting game...');
 
     const config = {
         ...GAME_CONFIG,
@@ -41,13 +41,6 @@ function initGame() {
         new Phaser.Game(config);
         console.log('Phaser game created successfully');
         hideLoading();
-
-        setTimeout(() => {
-            const canvas = document.querySelector('canvas');
-            if (!canvas) {
-                showError('No canvas created after 3 seconds');
-            }
-        }, 3000);
     } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         showError('Phaser error: ' + errorMsg);
@@ -55,19 +48,8 @@ function initGame() {
     }
 }
 
-setTimeout(() => {
-    if (typeof Phaser === 'undefined') {
-        showError('Phaser not loaded after 1 second');
-    } else {
-        showStatus('Loading scenes...');
-        // Wait for DOM to be ready
-        if (document.readyState === 'complete') {
-            initGame();
-        } else {
-            window.addEventListener('load', initGame);
-        }
-    }
-}, 500);
-
-// Initial status
-showStatus('Loading Phaser...');
+if (typeof Phaser === 'undefined') {
+    showError('Phaser not loaded');
+} else {
+    initGame();
+}

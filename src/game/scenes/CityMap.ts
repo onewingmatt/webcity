@@ -333,6 +333,67 @@ export class CityMap extends Phaser.Scene {
             } else {
                 audioManager.playBuild();
             }
+            this.updateTileVisuals(x, y, currentTool);
+        }
+    }
+
+    private updateTileVisuals(x: number, y: number, placedTool: number) {
+        const is3x3 = placedTool >= TILE_TYPES.RES_EMPTY && placedTool < TILE_TYPES.BRIDGE_ROAD;
+        const isBulldoze = placedTool === TILE_TYPES.GRASS;
+
+        if (is3x3) {
+            for (let cy = 0; cy < 3; cy++) {
+                for (let cx = 0; cx < 3; cx++) {
+                    const px = x + cx;
+                    const py = y + cy;
+                    if (px < 0 || px >= this.mapWidth || py < 0 || py >= this.mapHeight) continue;
+                    const frame = this.cityData.getFrame(px, py);
+                    this.layer.putTileAt(frame, px, py);
+                    this.applyTileTint(px, py);
+                }
+            }
+        } else if (isBulldoze) {
+            const frame = this.cityData.getFrame(x, y);
+            this.layer.putTileAt(frame, x, y);
+            this.applyTileTint(x, y);
+        } else {
+            const frame = this.cityData.getFrame(x, y);
+            this.layer.putTileAt(frame, x, y);
+            this.applyTileTint(x, y);
+        }
+    }
+
+    private applyTileTint(x: number, y: number) {
+        const tile = this.layer.getTileAt(x, y);
+        if (!tile) return;
+        const type = this.cityData.getTile(x, y);
+
+        if (this.showPollutionLayer) {
+            const pollution = this.cityData.pollutionGrid[y][x];
+            if (pollution > 20) tile.tint = 0xff0000;
+            else if (pollution > 5) tile.tint = 0xffff00;
+            else tile.tint = 0xffffff;
+        } else {
+            const hasPower = this.cityData.powerGrid[y][x];
+            const is3x3 = type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.RAIL_BASE;
+            const needsPower = is3x3;
+
+            if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD) {
+                const traffic = this.cityData.trafficGrid[y][x];
+                if (traffic > 20) tile.tint = 0x666666;
+                else if (traffic > 5) tile.tint = 0xaaaaaa;
+                else tile.tint = 0xffffff;
+            } else if (type === TILE_TYPES.WATER) {
+                tile.tint = 0x88ccff;
+            } else if (type === TILE_TYPES.TREE) {
+                tile.tint = 0x228b22;
+            } else if (type === TILE_TYPES.PARK) {
+                tile.tint = 0x32cd32;
+            } else if (needsPower && !hasPower) {
+                tile.tint = 0x888888;
+            } else {
+                tile.tint = 0xffffff;
+            }
         }
     }
 
