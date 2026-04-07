@@ -4,7 +4,7 @@ export const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
   type: Phaser.CANVAS,
   width: 800,
   height: 600,
-  parent: null,
+  parent: document.body,
   pixelArt: true,
   backgroundColor: '#1a1a2e',
   scale: {
