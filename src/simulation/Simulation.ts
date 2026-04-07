@@ -697,8 +697,10 @@ export class Simulation {
                 
                 if (this.cityData.isValid(nx, ny) && !this.cityData.powerGrid[ny][nx]) {
                     const targetType = this.cityData.getTile(nx, ny);
-                    // Power conducts through: Power Lines, Power Plants, and any Zone (Res/Com/Ind)
-                    if (targetType === TILE_TYPES.POWER_LINE_BASE || targetType >= TILE_TYPES.RES_EMPTY) {
+                    // Power conducts through: Power Lines, Power Plants, 3x3 Zones (Res/Com/Ind), and Roads
+                    const isZone = targetType >= TILE_TYPES.RES_EMPTY && targetType <= TILE_TYPES.IND_HIGH;
+                    if (targetType === TILE_TYPES.POWER_LINE_BASE || targetType === TILE_TYPES.POWER_PLANT || 
+                        targetType === TILE_TYPES.ROAD_BASE || targetType === TILE_TYPES.BRIDGE_ROAD || isZone) {
                         this.cityData.powerGrid[ny][nx] = true;
                         queue.push({x: nx, y: ny});
                     }

@@ -262,9 +262,13 @@ export class CityData {
         if (targetType === TILE_TYPES.RAIL_BASE && type === TILE_TYPES.BRIDGE_RAIL) return true;
         if (targetType === TILE_TYPES.BRIDGE_RAIL && type === TILE_TYPES.RAIL_BASE) return true;
         
-        // Power lines can connect to zones and power plants
+        // Roads connect to power lines (for visual auto-tiling)
+        if (targetType === TILE_TYPES.ROAD_BASE && type === TILE_TYPES.POWER_LINE_BASE) return true;
+        
+        // Power lines can connect to zones, power plants, and roads
         if (targetType === TILE_TYPES.POWER_LINE_BASE) {
-            if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.BRIDGE_ROAD) return true; // Connects to any 3x3 zone/building
+            if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.BRIDGE_ROAD) return true;
+            if (type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD) return true;
         }
 
         // Rails connect to Depots

@@ -17,7 +17,7 @@ export class CityMap extends Phaser.Scene {
 
     public simSpeed: number = 1; // 0: Paused, 1: Slow, 2: Normal, 3: Fast
     private simTimer!: Phaser.Time.TimerEvent;
-    private readonly SPEED_DELAYS = [0, 2000, 1000, 250]; // ms per tick
+    private readonly SPEED_DELAYS = [0, 4000, 1500, 500]; // ms per tick
 
     private cityData!: CityData;
     private simulation!: Simulation;
@@ -306,17 +306,19 @@ export class CityMap extends Phaser.Scene {
                     }
                 }
             }
-            // Allow placing on grass, dirt, or tree (which gets bulldozed implicitly)
-            else if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
+            // Allow placing on grass, dirt, tree, or road (power lines can go over roads)
+            else if (targetType === TILE_TYPES.GRASS || targetType === TILE_TYPES.DIRT || 
+                     targetType === TILE_TYPES.TREE || targetType === TILE_TYPES.ROAD_BASE) {
                 if (targetType !== currentTool) {
                     let clearCost = 0;
                     if (targetType === TILE_TYPES.DIRT || targetType === TILE_TYPES.TREE) {
                         clearCost = this.getToolCost(TILE_TYPES.GRASS);
                     }
 
-                    if (this.cityData.funds >= cost + clearCost) {
+                    // Power lines can overwrite roads (visual replacement)
+                    if (currentTool === TILE_TYPES.POWER_LINE_BASE || this.cityData.funds >= cost + clearCost) {
                         this.cityData.setTile(x, y, currentTool, true);
-                        actualCost += clearCost;
+                        if (currentTool !== TILE_TYPES.POWER_LINE_BASE) actualCost += clearCost;
                         placed = true;
                     }
                 }
