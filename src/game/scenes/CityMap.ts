@@ -150,7 +150,14 @@ export class CityMap extends Phaser.Scene {
         // Prevent painting if we are panning with multiple pointers
         const pointer2Down = this.input.pointer2 ? this.input.pointer2.isDown : false;
         if (this.input.activePointer.isDown && this.input.activePointer.button === 0 && !pointer2Down) {
-            actionTriggered = true;
+            // Do not trigger action if the pointer is over the UI (sidebar or top HUD)
+            const x = this.input.activePointer.x;
+            const y = this.input.activePointer.y;
+            const isOverUI = x < 64 || y < 32; // sidebarWidth = 64, hudHeight = 32
+
+            if (!isOverUI) {
+                actionTriggered = true;
+            }
         }
 
         if (pointerTileX >= 0 && pointerTileX < this.mapWidth && 
