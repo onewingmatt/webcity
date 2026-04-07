@@ -103,11 +103,19 @@ export class CityData {
     // Economy and Stats
     public funds: number = 20000;
     public population: number = 0;
+    public happiness: number = 50;
+    public disasterRecovery: number = 0;
+    public scenarioTier: number = 0;
+    public scenarioCompleted: boolean = false;
+    public scenarioFailed: boolean = false;
     public dateMonth: number = 1;
     public dateYear: number = 1900;
     
     // History (for Evaluation Graph)
-    public history: { year: number, pop: number, funds: number, crime: number, pollution: number }[] = [];
+    public history: { year: number, pop: number, funds: number, crime: number, pollution: number, happiness: number }[] = [];
+
+    // Latest newspaper issue for re-opening the news overlay
+    public latestNewspaper: { headline: string, body: string, date: string } | null = null;
 
     // Gifts
     public unlockedGifts: Set<number> = new Set();

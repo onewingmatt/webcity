@@ -22,8 +22,10 @@ export class CityMap extends Phaser.Scene {
     private cityData!: CityData;
     private simulation!: Simulation;
     private layer!: Phaser.Tilemaps.TilemapLayer;
+    private trafficOverlay!: Phaser.GameObjects.Graphics;
     private marker!: Phaser.GameObjects.Graphics;
     private inputManager!: InputManager;
+    private trafficPulse = 0;
     
     constructor() {
         super('CityMap');
@@ -48,6 +50,9 @@ export class CityMap extends Phaser.Scene {
         this.layer = map.createBlankLayer('CityLayer', tileset, 0, 0)!;
         this.layer.fill(0); // Fill with grass (index 0)
 
+        this.trafficOverlay = this.add.graphics();
+        this.trafficOverlay.setDepth(5);
+
         // Setup camera
         this.cameras.main.setBounds(0, 0, this.mapWidth * this.tileSize, this.mapHeight * this.tileSize);
         this.cameras.main.setZoom(2);
@@ -55,6 +60,7 @@ export class CityMap extends Phaser.Scene {
 
         // Hover Marker
         this.marker = this.add.graphics();
+        this.marker.setDepth(10);
         this.updateMarkerSize();
         
         this.events.on('toolChanged', (is3x3: boolean) => {
@@ -127,6 +133,8 @@ export class CityMap extends Phaser.Scene {
 
     update(time: number) {
         this.inputManager.update(time, this.mapWidth, this.mapHeight);
+        this.trafficPulse = time;
+        this.renderTrafficOverlay();
 
         let pointerTileX = this.inputManager.cursorX;
         let pointerTileY = this.inputManager.cursorY;
@@ -149,12 +157,12 @@ export class CityMap extends Phaser.Scene {
         // Action trigger: Left click or main touch
         // Prevent painting if we are panning with multiple pointers
         const pointer2Down = this.input.pointer2 ? this.input.pointer2.isDown : false;
+        const screenX = this.input.activePointer.x;
+        const screenY = this.input.activePointer.y;
+        const isOverUI = screenX < 64 || screenY < 32;
+
         if (this.input.activePointer.isDown && this.input.activePointer.button === 0 && !pointer2Down) {
             // Do not trigger action if the pointer is over the UI (sidebar or top HUD)
-            const x = this.input.activePointer.x;
-            const y = this.input.activePointer.y;
-            const isOverUI = x < 64 || y < 32; // sidebarWidth = 64, hudHeight = 32
-
             if (!isOverUI) {
                 actionTriggered = true;
             }
@@ -162,6 +170,12 @@ export class CityMap extends Phaser.Scene {
 
         if (pointerTileX >= 0 && pointerTileX < this.mapWidth && 
             pointerTileY >= 0 && pointerTileY < this.mapHeight) {
+
+            if (isOverUI) {
+                this.scene.get('MainUI').events.emit('hoverTileCleared');
+            } else {
+                this.updateHoverInspector(pointerTileX, pointerTileY);
+            }
             
             // Snap marker to grid. If 3x3, align top-left
             if (this.is3x3Mode) {
@@ -184,6 +198,8 @@ export class CityMap extends Phaser.Scene {
             if (actionTriggered) {
                 this.placeTile(pointerTileX, pointerTileY);
             }
+        } else {
+            this.scene.get('MainUI').events.emit('hoverTileCleared');
         }
     }
 
@@ -478,5 +494,136 @@ export class CityMap extends Phaser.Scene {
                 }
             }
         }
+
+        this.renderTrafficOverlay();
+    }
+
+    private renderTrafficOverlay() {
+        this.trafficOverlay.clear();
+
+        if (this.showPollutionLayer) {
+            return;
+        }
+
+        const pulseA = (Math.sin(this.trafficPulse / 240) + 1) * 0.5;
+        const pulseB = (Math.sin(this.trafficPulse / 140 + 1.5) + 1) * 0.5;
+
+        for (let y = 0; y < this.mapHeight; y++) {
+            for (let x = 0; x < this.mapWidth; x++) {
+                const type = this.cityData.getTile(x, y);
+                const traffic = this.cityData.trafficGrid[y][x];
+
+                if ((type !== TILE_TYPES.ROAD_BASE && type !== TILE_TYPES.BRIDGE_ROAD) || traffic <= 0) {
+                    continue;
+                }
+
+                const intensity = Math.min(1, traffic / 40);
+                if (intensity < 0.15) {
+                    continue;
+                }
+
+                const phase = (x + y) % 2 === 0 ? pulseA : pulseB;
+                const alpha = 0.25 + (intensity * 0.55);
+                const color = traffic > 20 ? 0xff6b3d : traffic > 5 ? 0xffcc66 : 0xffffff;
+
+                this.trafficOverlay.fillStyle(color, alpha);
+
+                const px = x * this.tileSize;
+                const py = y * this.tileSize;
+                const inset = 5;
+                const travel = Math.floor(phase * 6) - 3;
+
+                this.trafficOverlay.fillRect(px + inset + travel, py + inset, 4, 4);
+
+                if (intensity > 0.45) {
+                    this.trafficOverlay.fillRect(px + this.tileSize - inset - 4 - travel, py + this.tileSize - inset - 4, 4, 4);
+                }
+            }
+        }
+    }
+
+    private updateHoverInspector(x: number, y: number) {
+        const type = this.cityData.getTile(x, y);
+        const frame = this.cityData.getFrame(x, y);
+        const traffic = this.cityData.trafficGrid[y][x];
+        const congestion = this.getLocalTransitPressure(x, y);
+        const pollution = this.cityData.pollutionGrid[y][x];
+        const landValue = this.cityData.landValueGrid[y][x];
+        const crime = this.cityData.crimeGrid[y][x];
+        const powered = this.cityData.powerGrid[y][x] ? 'Yes' : 'No';
+
+        const name = this.getTileLabel(type, frame);
+        const info = [
+            `${name} (${x}, ${y})`,
+            `Power: ${powered}`,
+            `Traffic: ${traffic}`,
+            `Congestion: ${Math.round(congestion)}`,
+            `Pollution: ${pollution}`,
+            `Land Value: ${Math.round(landValue)}`,
+            `Crime: ${crime}`
+        ].join('\n');
+
+        this.scene.get('MainUI').events.emit('hoverTileChanged', info);
+    }
+
+    private getTileLabel(type: number, frame: number): string {
+        if (type === TILE_TYPES.GRASS) return 'Grass';
+        if (type === TILE_TYPES.DIRT) return 'Dirt';
+        if (type === TILE_TYPES.WATER) return 'Water';
+        if (type === TILE_TYPES.TREE) return 'Tree';
+        if (type === TILE_TYPES.PARK) return 'Park';
+        if (type === TILE_TYPES.FIRE) return 'Fire';
+        if (type === TILE_TYPES.ROAD_BASE) return 'Road';
+        if (type === TILE_TYPES.BRIDGE_ROAD) return 'Bridge Road';
+        if (type === TILE_TYPES.RAIL_BASE) return 'Rail';
+        if (type === TILE_TYPES.BRIDGE_RAIL) return 'Bridge Rail';
+        if (type === TILE_TYPES.POWER_LINE_BASE) return 'Power Line';
+        if (type === TILE_TYPES.POWER_PLANT) return 'Power Plant';
+        if (type === TILE_TYPES.POLICE_STATION) return 'Police Station';
+        if (type === TILE_TYPES.FIRE_STATION) return 'Fire Station';
+        if (type === TILE_TYPES.TRAIN_DEPOT) return 'Train Depot';
+        if (type === TILE_TYPES.SEAPORT) return 'Seaport';
+        if (type === TILE_TYPES.AIRPORT) return 'Airport';
+        if (type === TILE_TYPES.MAYOR_HOUSE) return 'Mayor House';
+        if (type === TILE_TYPES.CASINO) return 'Casino';
+        if (type === TILE_TYPES.AMUSEMENT_PARK) return 'Amusement Park';
+
+        if (type >= TILE_TYPES.RES_EMPTY && type < TILE_TYPES.BRIDGE_ROAD) {
+            const zoneType = frame >= TILE_TYPES.RES_EMPTY && frame < TILE_TYPES.COM_EMPTY ? 'Residential' :
+                frame >= TILE_TYPES.COM_LOW && frame < TILE_TYPES.IND_EMPTY ? 'Commercial' : 'Industrial';
+            const stage = frame === TILE_TYPES.RES_EMPTY || frame === TILE_TYPES.COM_EMPTY || frame === TILE_TYPES.IND_EMPTY ? 'Empty' :
+                frame === TILE_TYPES.RES_LOW || frame === TILE_TYPES.COM_LOW || frame === TILE_TYPES.IND_LOW ? 'Low' :
+                frame === TILE_TYPES.RES_MED || frame === TILE_TYPES.COM_MED || frame === TILE_TYPES.IND_MED ? 'Medium' : 'High';
+            return `${zoneType} ${stage}`;
+        }
+
+        return `Type ${type}`;
+    }
+
+    private getLocalTransitPressure(x: number, y: number): number {
+        let trafficTotal = 0;
+        let transitTiles = 0;
+
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (!this.cityData.isValid(nx, ny)) {
+                    continue;
+                }
+
+                const type = this.cityData.getTile(nx, ny);
+                const isTransit = type === TILE_TYPES.ROAD_BASE || type === TILE_TYPES.BRIDGE_ROAD ||
+                    type === TILE_TYPES.RAIL_BASE || type === TILE_TYPES.BRIDGE_RAIL;
+                if (!isTransit) {
+                    continue;
+                }
+
+                trafficTotal += this.cityData.trafficGrid[ny][nx];
+                transitTiles++;
+            }
+        }
+
+        return transitTiles > 0 ? trafficTotal / transitTiles : 0;
     }
 }

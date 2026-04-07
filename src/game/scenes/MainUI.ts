@@ -6,7 +6,9 @@ export class MainUI extends Phaser.Scene {
     private fundsText!: Phaser.GameObjects.Text;
     private dateText!: Phaser.GameObjects.Text;
     private popText!: Phaser.GameObjects.Text;
+    private happinessText!: Phaser.GameObjects.Text;
     private speedText!: Phaser.GameObjects.Text;
+    private tileInfoText!: Phaser.GameObjects.Text;
     
     private rciBars!: { r: Phaser.GameObjects.Graphics, c: Phaser.GameObjects.Graphics, i: Phaser.GameObjects.Graphics };
     private modeText!: Phaser.GameObjects.Text;
@@ -65,11 +67,33 @@ export class MainUI extends Phaser.Scene {
         this.fundsText = this.add.text(80, 10, 'Funds: $20000', textStyle);
         this.dateText = this.add.text(230, 10, 'Jan 1900', textStyle);
         this.popText = this.add.text(340, 10, 'Pop: 0', textStyle);
-        this.speedText = this.add.text(430, 10, 'Speed: SLOW', textStyle);
+        this.happinessText = this.add.text(430, 10, 'Happy: 50%', textStyle);
+        this.speedText = this.add.text(530, 10, 'Speed: SLOW', textStyle);
 
         this.modeText = this.add.text(this.cameras.main.width - 240, 10, 'View: Normal (V)', textStyle);
         this.events.on('viewModeChanged', (mode: string) => {
             this.modeText.setText(`View: ${mode} (V)`);
+        });
+
+        const infoPanelX = this.cameras.main.width - 230;
+        const infoPanelY = this.cameras.main.height - 116;
+        const infoBg = this.add.graphics();
+        infoBg.fillStyle(0x000080, 0.88);
+        infoBg.fillRect(infoPanelX, infoPanelY, 220, 100);
+        infoBg.lineStyle(2, 0xffffff, 1);
+        infoBg.strokeRect(infoPanelX, infoPanelY, 220, 100);
+
+        this.add.text(infoPanelX + 10, infoPanelY + 6, 'TILE INSPECTOR', {
+            fontSize: '14px',
+            color: '#ffff00',
+            fontFamily: 'monospace'
+        });
+
+        this.tileInfoText = this.add.text(infoPanelX + 10, infoPanelY + 26, 'Hover a tile to inspect it.', {
+            fontSize: '12px',
+            color: '#ffffff',
+            fontFamily: 'monospace',
+            wordWrap: { width: 200 }
         });
 
         this.events.on('speedChanged', (speed: number) => {
@@ -85,6 +109,14 @@ export class MainUI extends Phaser.Scene {
             .on('pointerdown', () => {
                 audioManager.playClick();
                 this.events.emit('openEvaluation');
+            });
+
+        // Add News Button
+        this.add.text(this.cameras.main.width - 220, 8, 'NEWS (N)', { fontSize: '16px', color: '#ff0', fontFamily: 'monospace', backgroundColor: '#000' })
+            .setInteractive()
+            .on('pointerdown', () => {
+                audioManager.playClick();
+                this.openLatestNewspaper();
             });
 
         // Setup RCI Meter
@@ -162,6 +194,12 @@ export class MainUI extends Phaser.Scene {
             this.events.emit('openEvaluation');
         });
 
+        // Keyboard shortcut for Newspaper
+        this.input.keyboard?.on('keydown-N', () => {
+            audioManager.playClick();
+            this.openLatestNewspaper();
+        });
+
         // Keyboard shortcuts for taxes
         this.input.keyboard?.on('keydown-MINUS', () => {
             const cityScene = this.scene.get('CityMap') as any;
@@ -196,6 +234,12 @@ export class MainUI extends Phaser.Scene {
         });
         cityScene.events.on('prevTool', () => {
             this.setActiveTool(getPrevToolId(), toolIcons);
+        });
+        cityScene.events.on('hoverTileChanged', (info: string) => {
+            this.tileInfoText.setText(info);
+        });
+        cityScene.events.on('hoverTileCleared', () => {
+            this.tileInfoText.setText('Hover a tile to inspect it.');
         });
 
         // Setup Advisor UI
@@ -270,10 +314,23 @@ export class MainUI extends Phaser.Scene {
     }
 
     handleSimulationEvents(stats: any) {
-        const { totalPollution, highTrafficTiles, roadTiles, population, totalCrime, budgetReport, net, taxes, upkeep, disaster } = stats;
+        const { totalPollution, highTrafficTiles, roadTiles, population, totalCrime, budgetReport, net, taxes, upkeep, disaster, happiness, roads, police, fire, depots, airports, seaports, message } = stats;
 
-        if (disaster === 'FIRE') {
-            this.queueMessage("FIRE! A fire has broken out in the city. Build Fire Stations to stop the spread, or bulldoze the area!");
+        if (typeof message === 'string' && message.length > 0) {
+            this.queueMessage(message);
+            return;
+        }
+
+        if (disaster) {
+            if (disaster === 'FIRE') {
+                this.queueMessage("FIRE! A fire has broken out in the city. Build Fire Stations to stop the spread, or bulldoze the area!");
+            } else if (disaster === 'MONSTER') {
+                this.queueMessage("MONSTER ALERT! A giant monster is rampaging through the city. Expect heavy damage and rising panic!");
+            } else if (disaster === 'UFO') {
+                this.queueMessage("UFO SIGHTING! Unidentified flying objects are abducting city structures. Keep building and maintain order!");
+            } else {
+                this.queueMessage(`${disaster} has struck the city!`);
+            }
             return;
         }
 
@@ -283,10 +340,12 @@ export class MainUI extends Phaser.Scene {
             if (net > 0) approval += 10;
             if (totalPollution > 100) approval -= 15;
             if (totalCrime > 50) approval -= 15;
+            if (happiness >= 70) approval += 10;
+            if (happiness < 40) approval -= 10;
             if (population > 500) approval += 20;
             approval = Math.max(0, Math.min(100, approval));
 
-            this.queueMessage(`Year End Report! Approval Rating: ${approval}%. Collected $${taxes} in taxes. Paid $${upkeep} in road upkeep. Net change: $${net}. Use +/- to adjust tax rate.`);
+            this.queueMessage(`Year End Report! Approval Rating: ${approval}%. Happiness: ${Math.round(happiness)}%. Taxes: $${taxes}. Upkeep: $${upkeep} (Roads:${roads}, Police:${police}, Fire:${fire}, Depots:${depots}, Airports:${airports}, Seaports:${seaports}). Net change: $${net}. Use +/- to adjust tax rate.`);
             return;
         }
 
@@ -305,6 +364,20 @@ export class MainUI extends Phaser.Scene {
 
         if (totalCrime > 50 && Math.random() < 0.3) {
              this.queueMessage("Crime is out of control! Build more Police Stations (Press 7) to keep your citizens safe and maintain land value.");
+        }
+
+        if ((police || fire) && happiness > 60 && Math.random() < 0.08) {
+            this.queueMessage("City services are supporting stable neighborhoods. Keep the network powered and covered.");
+        }
+
+        if (happiness < 35 && Math.random() < 0.25) {
+            this.queueMessage("Citizens are unhappy. Reduce pollution, ease traffic, and improve services to stabilize the city.");
+        } else if (happiness > 75 && Math.random() < 0.15) {
+            this.queueMessage("Citizens are pleased! Strong services and good land value are helping the city thrive.");
+        }
+
+        if (happiness < 45 && Math.random() < 0.1) {
+            this.queueMessage("Recovery is still underway after recent disasters. Rebuild damaged districts and keep services powered.");
         }
     }
 
@@ -372,6 +445,8 @@ export class MainUI extends Phaser.Scene {
             this.events.emit('updateGifts');
             this.fundsText.setText(`Funds: $${data.funds}`);
             this.popText.setText(`Pop: ${data.population}`);
+            this.happinessText.setText(`Happy: ${Math.round(data.happiness)}%`);
+            this.happinessText.setColor(data.happiness < 40 ? '#ff6666' : data.happiness > 70 ? '#66ff66' : '#ffffff');
             
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const m = data.dateMonth - 1;
@@ -419,5 +494,17 @@ export class MainUI extends Phaser.Scene {
                 item.border.setVisible(false);
             }
         });
+    }
+
+    private openLatestNewspaper() {
+        const cityScene = this.scene.get('CityMap') as any;
+        const issue = cityScene?.cityData?.latestNewspaper;
+
+        if (!issue) {
+            this.queueMessage('No newspaper issue is available yet. Advance the simulation to generate one.');
+            return;
+        }
+
+        window.dispatchEvent(new CustomEvent('newspaperEvent', { detail: issue }));
     }
 }

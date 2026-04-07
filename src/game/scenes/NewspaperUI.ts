@@ -7,6 +7,7 @@ export class NewspaperUI extends Phaser.Scene {
     private bodyText!: Phaser.GameObjects.Text;
     private dateText!: Phaser.GameObjects.Text;
     private isShown = false;
+    private newspaperListener?: (event: Event) => void;
 
     constructor() {
         super({ key: 'NewspaperUI', active: true });
@@ -88,11 +89,21 @@ export class NewspaperUI extends Phaser.Scene {
 
         this.container.add([bg, paper, headerBar, title, this.dateText, this.headlineText, this.bodyText]);
 
-        // Listen for newspaper events
-        window.addEventListener('newspaperEvent', this.handleNewspaperEvent.bind(this));
+        // Listen for newspaper events and clean up when the scene shuts down.
+        this.newspaperListener = (event: Event) => this.handleNewspaperEvent(event as CustomEvent);
+        window.addEventListener('newspaperEvent', this.newspaperListener);
+
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
     }
 
-    private handleNewspaperEvent(event: any) {
+    private shutdown() {
+        if (this.newspaperListener) {
+            window.removeEventListener('newspaperEvent', this.newspaperListener);
+            this.newspaperListener = undefined;
+        }
+    }
+
+    private handleNewspaperEvent(event: CustomEvent) {
         const { headline, body, date } = event.detail;
         this.show(headline, body, date);
     }

@@ -59,7 +59,8 @@ export class EvaluationUI extends Phaser.Scene {
             this.add.text(legendX, legendY, 'City Pop', {color:'#0f0', fontSize:'14px', fontFamily:'monospace'}),
             this.add.text(legendX, legendY + 20, 'Funds', {color:'#ff0', fontSize:'14px', fontFamily:'monospace'}),
             this.add.text(legendX, legendY + 40, 'Crime', {color:'#f00', fontSize:'14px', fontFamily:'monospace'}),
-            this.add.text(legendX, legendY + 60, 'Pollution', {color:'#a52a2a', fontSize:'14px', fontFamily:'monospace'})
+            this.add.text(legendX, legendY + 60, 'Pollution', {color:'#a52a2a', fontSize:'14px', fontFamily:'monospace'}),
+            this.add.text(legendX, legendY + 80, 'Happiness', {color:'#66ff66', fontSize:'14px', fontFamily:'monospace'})
         ]);
 
         // Listen for open command
@@ -111,12 +112,14 @@ export class EvaluationUI extends Phaser.Scene {
         this.graphGraphics.stroke();
 
         // Find max values to scale
-        let maxPop = 1, maxFunds = 1, maxCrime = 1, maxPol = 1;
+           let maxPop = 1, maxFunds = 1, maxCrime = 1, maxPol = 1, maxHappy = 1;
         data.forEach(d => {
              if (d.pop > maxPop) maxPop = d.pop;
              if (d.funds > maxFunds) maxFunds = d.funds;
              if (d.crime > maxCrime) maxCrime = d.crime;
              if (d.pollution > maxPol) maxPol = d.pollution;
+           const happinessValue = Number(d.happiness ?? 0);
+           if (happinessValue > maxHappy) maxHappy = happinessValue;
         });
 
         const dx = graphW / (limit - 1);
@@ -131,7 +134,8 @@ export class EvaluationUI extends Phaser.Scene {
 
             data.forEach((d, i) => {
                 const x = startX + (startIdx + i) * dx;
-                const normalized = Math.min(1, d[key] / max);
+                const value = Number(d[key] ?? 0);
+                const normalized = Math.min(1, value / max);
                 const y = startY + graphH - (normalized * graphH);
                 if (i === 0) this.graphGraphics.moveTo(x, y);
                 else this.graphGraphics.lineTo(x, y);
@@ -143,5 +147,6 @@ export class EvaluationUI extends Phaser.Scene {
         drawLine('funds', maxFunds * 1.2, 0xffff00);
         drawLine('crime', maxCrime * 1.2, 0xff0000);
         drawLine('pollution', maxPol * 1.2, 0xa52a2a);
+        drawLine('happiness', maxHappy * 1.2, 0x66ff66);
     }
 }
